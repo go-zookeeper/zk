@@ -40,7 +40,7 @@ func NewIntegrationTestServer(t *testing.T, configPath string, stdout, stderr io
 	zkPath := os.Getenv("ZOOKEEPER_BIN_PATH")
 	if zkPath == "" {
 		// default to a static reletive path that can be setup with a build system
-		zkPath = "../zookeeper/bin"
+		zkPath = "zookeeper/bin"
 	}
 	if _, err := os.Stat(zkPath); err != nil {
 		if os.IsNotExist(err) {
