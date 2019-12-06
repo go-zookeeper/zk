@@ -900,7 +900,12 @@ func (c *Conn) queueRequest(opcode int32, req interface{}, res interface{}, recv
 	switch opcode {
 	case opClose:
 		// always attempt to send close ops.
-		c.sendChan <- rq
+		select {
+		case c.sendChan <- rq:
+		case <-time.After(c.connectTimeout * 2):
+			c.logger.Printf("gave up trying to send opClose to server")
+			rq.recvChan <- response{-1, ErrConnectionClosed}
+		}
 	default:
 		// otherwise avoid deadlocks for dumb clients who aren't aware that
 		// the ZK connection is closed yet.
