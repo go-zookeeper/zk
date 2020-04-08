@@ -36,6 +36,10 @@ func NewLock(c *Conn, path string, acl []ACL) *Lock {
 
 func parseSeq(path string) (int, error) {
 	parts := strings.Split(path, "-")
+	// python client uses a __LOCK__ prefix
+	if len(parts) == 1 {
+		parts = strings.Split(path, "__")
+	}
 	return strconv.Atoi(parts[len(parts)-1])
 }
 
