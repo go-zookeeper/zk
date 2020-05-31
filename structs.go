@@ -78,7 +78,7 @@ type ServerStats struct {
 	Received    int64
 	NodeCount   int64
 	MinLatency  int64
-	AvgLatency  int64
+	AvgLatency  float64
 	MaxLatency  int64
 	Connections int64
 	Outstanding int64

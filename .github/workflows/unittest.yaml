@@ -6,8 +6,8 @@ jobs:
     name: unittest
     strategy:
       matrix:
-        zk-version: [3.4.14, 3.5.6]
-        go-version: [1.11.x, 1.12.x, 1.13.x]
+        zk-version: [3.5.8, 3.6.1]
+        go-version: [1.13.x, 1.14.x]
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
@@ -18,16 +18,13 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v1
         with:
-          java-version: 1.9
+          java-version: 14
 
       - name: Checkout code
         uses: actions/checkout@v1
 
-      - name: Setup code
-        run: make setup ZK_VERSION=${{ matrix.zk-version }}
-
       - name: Test code
-        run: make test
+        run: make test ZK_VERSION=${{ matrix.zk-version }}
 
       - name: Upload code coverage
         uses: codecov/codecov-action@v1
