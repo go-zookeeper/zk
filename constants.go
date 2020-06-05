@@ -74,10 +74,7 @@ const (
 const (
 	FlagEphemeral = 1
 	FlagSequence  = 2
-	FlagEphemeralSequence = 3
-	FlagContainer = 4
-	FlagWithTTL = 5
-	FlagSequenceWithTTL = 6
+	FlagTTL = 4
 )
 
 var (

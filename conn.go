@@ -1059,7 +1059,7 @@ func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL)
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
 	}
-	if flags != FlagContainer {
+	if flags&FlagTTL != FlagTTL {
 		return "", errors.New("flags not support container node")
 	}
 
@@ -1073,7 +1073,7 @@ func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl i
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
 	}
-	if flags != FlagWithTTL && flags != FlagSequenceWithTTL {
+	if flags&FlagTTL != FlagTTL {
 		return "", errors.New("flags not support ttl node")
 	}
 
