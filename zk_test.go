@@ -134,8 +134,7 @@ func TestCreateTTL(t *testing.T) {
 		t.Fatalf("Create returned error: %+v", err)
 	} else if !strings.HasPrefix(p, path) {
 		t.Fatalf("Create returned invalid path '%s' are not '%s' with sequence", p, path)
-	}
-	if data, stat, err := zk.Get(path); err != nil {
+	} else if data, stat, err := zk.Get(p); err != nil {
 		t.Fatalf("Get returned error: %+v", err)
 	} else if stat == nil {
 		t.Fatal("Get returned nil stat")
