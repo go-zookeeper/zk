@@ -114,6 +114,12 @@ func TestCreateTTL(t *testing.T) {
 	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
 		t.Fatalf("Delete returned error: %+v", err)
 	}
+	if _, err := zk.CreateTTL("", []byte{1, 2, 3, 4}, FlagTTL|FlagEphemeral, WorldACL(PermAll), 60*1000); err != ErrInvalidPath {
+		t.Fatalf("Create path check failed")
+	}
+	if _, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll), 60*1000); err != ErrInvalidFlags {
+		t.Fatalf("Create flags check failed")
+	}
 	if p, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, FlagTTL|FlagEphemeral, WorldACL(PermAll), 60*1000); err != nil {
 		t.Fatalf("Create returned error: %+v", err)
 	} else if p != path {
@@ -159,6 +165,12 @@ func TestCreateContainer(t *testing.T) {
 
 	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
 		t.Fatalf("Delete returned error: %+v", err)
+	}
+	if _, err := zk.CreateContainer("", []byte{1, 2, 3, 4}, FlagTTL, WorldACL(PermAll)); err != ErrInvalidPath {
+		t.Fatalf("Create path check failed")
+	}
+	if _, err := zk.CreateContainer(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != ErrInvalidFlags {
+		t.Fatalf("Create flags check failed")
 	}
 	if p, err := zk.CreateContainer(path, []byte{1, 2, 3, 4}, FlagTTL, WorldACL(PermAll)); err != nil {
 		t.Fatalf("Create returned error: %+v", err)
