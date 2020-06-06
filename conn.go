@@ -1060,7 +1060,7 @@ func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL)
 		return "", err
 	}
 	if flags&FlagTTL != FlagTTL {
-		return "", errors.New("flags not support container node")
+		return "", ErrInvalidFlags
 	}
 
 	res := &createResponse{}
@@ -1074,7 +1074,7 @@ func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl i
 		return "", err
 	}
 	if flags&FlagTTL != FlagTTL {
-		return "", errors.New("flags not support ttl node")
+		return "", ErrInvalidFlags
 	}
 
 	res := &createResponse{}
@@ -1240,10 +1240,6 @@ func (c *Conn) Multi(ops ...interface{}) ([]MultiResponse, error) {
 		switch op.(type) {
 		case *CreateRequest:
 			opCode = opCreate
-		case *CreateContainerRequest:
-			opCode = opCreateContainer
-		case *CreateTTLRequest:
-			opCode = opCreateTTL
 		case *SetDataRequest:
 			opCode = opSetData
 		case *DeleteRequest:

@@ -375,7 +375,7 @@ func (r *multiResponse) Decode(buf []byte) (int, error) {
 			return total, ErrAPIError
 		case opError:
 			w = reflect.ValueOf(&res.Err)
-		case opCreate, opCreateContainer, opCreateTTL:
+		case opCreate:
 			w = reflect.ValueOf(&res.String)
 		case opSetData:
 			res.Stat = new(Stat)
@@ -599,10 +599,6 @@ func requestStructForOp(op int32) interface{} {
 		return &closeRequest{}
 	case opCreate:
 		return &CreateRequest{}
-	case opCreateContainer:
-		return &CreateContainerRequest{}
-	case opCreateTTL:
-		return &CreateTTLRequest{}
 	case opDelete:
 		return &DeleteRequest{}
 	case opExists:
