@@ -599,6 +599,10 @@ func requestStructForOp(op int32) interface{} {
 		return &closeRequest{}
 	case opCreate:
 		return &CreateRequest{}
+	case opCreateContainer:
+		return &CreateContainerRequest{}
+	case opCreateTTL:
+		return &CreateTTLRequest{}
 	case opDelete:
 		return &DeleteRequest{}
 	case opExists:
