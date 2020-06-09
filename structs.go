@@ -172,7 +172,7 @@ type CreateTTLRequest struct {
 	Data  []byte
 	Acl   []ACL
 	Flags int32
-	Ttl   int64
+	Ttl   int64 // ms
 }
 
 type createResponse pathResponse
