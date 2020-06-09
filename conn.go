@@ -1068,8 +1068,7 @@ func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL)
 	return res.Path, err
 }
 
-// ttl: ms
-func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl int64) (string, error) {
+func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl time.Duration) (string, error) {
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
 	}
@@ -1078,7 +1077,7 @@ func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl i
 	}
 
 	res := &createResponse{}
-	_, err := c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, flags, ttl}, res, nil)
+	_, err := c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, flags, ttl.Nanoseconds() / 1e6}, res, nil)
 	return res.Path, err
 }
 
