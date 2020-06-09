@@ -109,7 +109,7 @@ func TestCreateTTL(t *testing.T) {
 	}
 	defer zk.Close()
 
-	path := "/gozk-test-ttl"
+	path := "/gozk-test"
 
 	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
 		t.Fatalf("Delete returned error: %+v", err)
@@ -161,7 +161,7 @@ func TestCreateContainer(t *testing.T) {
 	}
 	defer zk.Close()
 
-	path := "/gozk-test-container"
+	path := "/gozk-test"
 
 	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
 		t.Fatalf("Delete returned error: %+v", err)
