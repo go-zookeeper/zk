@@ -1,14 +1,7 @@
 # make file to hold the logic of build and test setup
 ZK_VERSION ?= 3.5.6
 
-# Apache changed the name of the archive in version 3.5.x and seperated out
-# src and binary packages
-ZK_MINOR_VER=$(word 2, $(subst ., ,$(ZK_VERSION)))
-ifeq ($(shell test $(ZK_MINOR_VER) -le 4; echo $$?),0)
-  ZK = zookeeper-$(ZK_VERSION)
-else
-  ZK = apache-zookeeper-$(ZK_VERSION)-bin
-endif
+ZK = apache-zookeeper-$(ZK_VERSION)-bin
 ZK_URL = "https://archive.apache.org/dist/zookeeper/zookeeper-$(ZK_VERSION)/$(ZK).tar.gz"
 
 PACKAGES := $(shell go list ./... | grep -v examples)
@@ -49,3 +42,12 @@ clean:
 	rm -rf zookeeper-*/
 	rm -f zookeeper
 	rm -f profile.cov
+
+.PHONY: jute
+jute:
+	go run github.com/go-zookeeper/jute/cmd/jutec \
+		-go.moduleMap=org.apache.zookeeper: \
+		-go.prefix=github.com/go-zookeeper/zk/internal \
+		-outDir internal \
+		jute/zookeeper.jute
+	rm -rf internal/server
