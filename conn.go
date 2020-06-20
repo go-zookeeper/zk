@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -180,15 +179,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		return nil, nil, errors.New("zk: server list must not be empty")
 	}
 
-	srvs := make([]string, len(servers))
-
-	for i, addr := range servers {
-		if strings.Contains(addr, ":") {
-			srvs[i] = addr
-		} else {
-			srvs[i] = addr + ":" + strconv.Itoa(DefaultPort)
-		}
-	}
+	srvs := FormatServers(servers)
 
 	// Randomize the order of the servers to avoid creating hotspots
 	stringShuffle(srvs)
