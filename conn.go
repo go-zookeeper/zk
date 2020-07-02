@@ -21,6 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-zookeeper/zk/flw"
 )
 
 // ErrNoServer indicates that an operation cannot be completed
@@ -179,7 +181,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		return nil, nil, errors.New("zk: server list must not be empty")
 	}
 
-	srvs := FormatServers(servers)
+	srvs := flw.FormatServers(servers)
 
 	// Randomize the order of the servers to avoid creating hotspots
 	stringShuffle(srvs)

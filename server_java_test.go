@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/go-zookeeper/zk/flw"
 )
 
 type ErrMissingServerConfigField string
@@ -116,7 +118,7 @@ func (sc ServerConfig) Marshall(w io.Writer) error {
 	}
 	fmt.Fprintf(w, "syncLimit=%d\n", sc.SyncLimit)
 	if sc.ClientPort <= 0 {
-		sc.ClientPort = DefaultPort
+		sc.ClientPort = flw.DefaultPort
 	}
 	fmt.Fprintf(w, "clientPort=%d\n", sc.ClientPort)
 	if sc.AutoPurgePurgeInterval > 0 {

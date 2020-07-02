@@ -1,4 +1,4 @@
-package zk
+package flw
 
 import (
 	"bufio"
@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// FLWSrvr is a FourLetterWord helper function. In particular, this function pulls the srvr output
+// Srvr is a FourLetterWord helper function. In particular, this function pulls the srvr output
 // from the zookeeper instances and parses the output. A slice of *ServerStats structs are returned
 // as well as a boolean value to indicate whether this function processed successfully.
 //
@@ -20,7 +20,7 @@ import (
 // then the error happened before we started to obtain 'srvr' values. Otherwise, one of the
 // servers had an issue and the "Error" value in the struct should be inspected to determine
 // which server had the issue.
-func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
+func Srvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 	// different parts of the regular expression that are required to parse the srvr output
 	const (
 		zrVer   = `^Zookeeper version: ([A-Za-z0-9\.\-]+), built on (\d\d/\d\d/\d\d\d\d \d\d:\d\d [A-Za-z0-9:\+\-]+)`
@@ -125,9 +125,9 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 	return ss, imOk
 }
 
-// FLWRuok is a FourLetterWord helper function. In particular, this function
+// Ruok is a FourLetterWord helper function. In particular, this function
 // pulls the ruok output from each server.
-func FLWRuok(servers []string, timeout time.Duration) []bool {
+func Ruok(servers []string, timeout time.Duration) []bool {
 	servers = FormatServers(servers)
 	oks := make([]bool, len(servers))
 
@@ -145,12 +145,12 @@ func FLWRuok(servers []string, timeout time.Duration) []bool {
 	return oks
 }
 
-// FLWCons is a FourLetterWord helper function. In particular, this function
+// Cons is a FourLetterWord helper function. In particular, this function
 // pulls the ruok output from each server.
 //
-// As with FLWSrvr, the boolean value indicates whether one of the requests had
+// As with Srvr, the boolean value indicates whether one of the requests had
 // an issue. The Clients struct has an Error value that can be checked.
-func FLWCons(servers []string, timeout time.Duration) ([]*ServerClients, bool) {
+func Cons(servers []string, timeout time.Duration) ([]*ServerClients, bool) {
 	const (
 		zrAddr = `^ /((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):(?:\d+))\[\d+\]`
 		zrPac  = `\(queued=(\d+),recved=(\d+),sent=(\d+),sid=(0x[A-Za-z0-9]+),lop=(\w+),est=(\d+),to=(\d+),`

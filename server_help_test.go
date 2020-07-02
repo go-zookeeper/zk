@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-zookeeper/zk/flw"
 )
 
 const (
@@ -163,7 +165,7 @@ func (tc *TestCluster) waitForStart(maxRetry int, interval time.Duration) error 
 	}
 
 	for i := 0; i < maxRetry; i++ {
-		_, ok := FLWSrvr(serverAddrs, time.Second)
+		_, ok := flw.Srvr(serverAddrs, time.Second)
 		if ok {
 			return nil
 		}
@@ -184,7 +186,7 @@ func (tc *TestCluster) waitForStop(maxRetry int, interval time.Duration) error {
 	var success bool
 	for i := 0; i < maxRetry && !success; i++ {
 		success = true
-		for _, ok := range FLWRuok(serverAddrs, time.Second) {
+		for _, ok := range flw.Ruok(serverAddrs, time.Second) {
 			if ok {
 				success = false
 			}

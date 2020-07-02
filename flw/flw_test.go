@@ -1,4 +1,4 @@
-package zk
+package flw
 
 import (
 	"net"
@@ -24,7 +24,7 @@ Node count: 306
 `
 )
 
-func TestFLWRuok(t *testing.T) {
+func TestRuok(t *testing.T) {
 	t.Parallel()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -34,7 +34,7 @@ func TestFLWRuok(t *testing.T) {
 
 	go tcpServer(l, "")
 
-	oks := FLWRuok([]string{l.Addr().String()}, time.Second*10)
+	oks := Ruok([]string{l.Addr().String()}, time.Second*10)
 	if len(oks) == 0 {
 		t.Errorf("no values returned")
 	}
@@ -53,7 +53,7 @@ func TestFLWRuok(t *testing.T) {
 
 	go tcpServer(l, "dead")
 
-	oks = FLWRuok([]string{l.Addr().String()}, time.Second*10)
+	oks = Ruok([]string{l.Addr().String()}, time.Second*10)
 	if len(oks) == 0 {
 		t.Errorf("no values returned")
 	}
@@ -62,7 +62,7 @@ func TestFLWRuok(t *testing.T) {
 	}
 }
 
-func TestFLWSrvr(t *testing.T) {
+func TestSrvr(t *testing.T) {
 	t.Parallel()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -72,7 +72,7 @@ func TestFLWSrvr(t *testing.T) {
 
 	go tcpServer(l, "")
 
-	statsSlice, ok := FLWSrvr([]string{l.Addr().String()}, time.Second*10)
+	statsSlice, ok := Srvr([]string{l.Addr().String()}, time.Second*10)
 	if !ok {
 		t.Errorf("failure indicated on 'srvr' parsing")
 	}
@@ -135,7 +135,7 @@ func TestFLWSrvr(t *testing.T) {
 	}
 }
 
-func TestFLWCons(t *testing.T) {
+func TestCons(t *testing.T) {
 	t.Parallel()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -145,7 +145,7 @@ func TestFLWCons(t *testing.T) {
 
 	go tcpServer(l, "")
 
-	clients, ok := FLWCons([]string{l.Addr().String()}, time.Second*10)
+	clients, ok := Cons([]string{l.Addr().String()}, time.Second*10)
 	if !ok {
 		t.Errorf("failure indicated on 'cons' parsing")
 	}
