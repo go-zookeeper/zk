@@ -424,6 +424,8 @@ func (c *Conn) sendRequest(
 }
 
 func (c *Conn) loop(ctx context.Context) {
+	disconnectTime := time.Time{}
+
 	for {
 		if err := c.connect(); err != nil {
 			// c.Close() was called
@@ -433,15 +435,19 @@ func (c *Conn) loop(ctx context.Context) {
 		err := c.authenticate()
 		switch {
 		case err == ErrSessionExpired:
-			c.logger.Printf("authentication failed: %s", err)
-			c.invalidateWatches(err)
+			c.logger.Printf("authentication expired: %s", err)
+			c.resetSession(err)
 		case err != nil && c.conn != nil:
 			c.logger.Printf("authentication failed: %s", err)
 			c.conn.Close()
+			if err == io.EOF && !disconnectTime.IsZero() && c.sessionExpired(disconnectTime) {
+				c.resetSession(err)
+			}
 		case err == nil:
 			if c.logInfo {
 				c.logger.Printf("authenticated: id=%d, timeout=%d", c.SessionID(), c.sessionTimeoutMs)
 			}
+			disconnectTime = time.Time{}      // reset disconnect time
 			c.hostProvider.Connected()        // mark success
 			c.closeChan = make(chan struct{}) // channel to tell send loop stop
 
@@ -483,6 +489,7 @@ func (c *Conn) loop(ctx context.Context) {
 
 			c.sendSetWatches()
 			wg.Wait()
+			disconnectTime = time.Now()
 		}
 
 		c.setState(StateDisconnected)
@@ -703,9 +710,6 @@ func (c *Conn) authenticate() error {
 		return err
 	}
 	if r.SessionID == 0 {
-		atomic.StoreInt64(&c.sessionID, int64(0))
-		c.passwd = emptyPassword
-		c.lastZxid = 0
 		c.setState(StateExpired)
 		return ErrSessionExpired
 	}
@@ -716,6 +720,18 @@ func (c *Conn) authenticate() error {
 	c.setState(StateHasSession)
 
 	return nil
+}
+
+func (c *Conn) sessionExpired(d time.Time) bool {
+	return d.Add(time.Duration(c.sessionTimeoutMs) * time.Millisecond).Before(time.Now())
+}
+
+func (c *Conn) resetSession(err error) {
+	c.logger.Printf("session reset on error: %s", err)
+	atomic.StoreInt64(&c.sessionID, int64(0))
+	c.passwd = emptyPassword
+	c.lastZxid = 0
+	c.invalidateWatches(err)
 }
 
 func (c *Conn) sendData(req *request) error {
