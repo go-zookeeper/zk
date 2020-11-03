@@ -1068,7 +1068,7 @@ func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl t
 	}
 
 	res := &createResponse{}
-	_, err := c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, flags, ttl.Milliseconds()}, res, nil)
+	_, err := c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, flags, int64(ttl) / 1e6}, res, nil)
 	return res.Path, err
 }
 
