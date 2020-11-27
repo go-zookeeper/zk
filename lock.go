@@ -107,6 +107,10 @@ func (l *Lock) LockWithData(data []byte) error {
 		prevSeq := -1
 		prevSeqPath := ""
 		for _, p := range children {
+      if !(strings.HasPrefix(p, protectedPrefix) || strings.Contains(strings.ToUpper(p), "__LOCK__")) {
+        // no need to process nodes which are not lock nodes
+        continue
+      }
 			s, err := parseSeq(p)
 			if err != nil {
 				return err
