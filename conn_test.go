@@ -80,3 +80,32 @@ func TestDeadlockInClose(t *testing.T) {
 		t.Fatal("apparent deadlock!")
 	}
 }
+
+func TestGetEphemerals(t *testing.T) {
+	conn, _, err := Connect([]string{"127.0.0.1"}, time.Second) //*10)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	conn.Create("/zktest", []byte("placeholder"), 0, WorldACL(PermAll))
+	conn.Create("/zktest/testblabla", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+	conn.Create("/zktest/nonono", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+	conn.Create("/testE", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+	conn.Create("/testE2", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+
+	e1, _ := conn.GetEphemerals("/zktest")
+	if len(e1) != 2 {
+		t.Fatalf("/zktest result should be 2, but got %d", len(e1))
+	}
+
+	e2, _ := conn.GetEphemerals("/")
+	if len(e2) != 4 {
+		t.Fatalf("/zktest result should be 4, but got %d", len(e2))
+	}
+
+	e3, _ := conn.GetEphemerals("/testE")
+	if len(e3) != 2 {
+		t.Fatalf("/zktest result should be 2, but got %d", len(e3))
+	}
+
+}

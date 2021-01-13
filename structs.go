@@ -300,6 +300,15 @@ type reconfigRequest struct {
 
 type reconfigReponse getDataResponse
 
+// zk version 3.6 reconfig API
+type getEphemeralsRequest struct {
+	Path string
+}
+
+type getEphemeralsResponse struct {
+	Children []string
+}
+
 func (r *multiRequest) Encode(buf []byte) (int, error) {
 	total := 0
 	for _, op := range r.Ops {
@@ -633,6 +642,8 @@ func requestStructForOp(op int32) interface{} {
 		return &multiRequest{}
 	case opReconfig:
 		return &reconfigRequest{}
+	case opGetEphemerals:
+		return &getEphemeralsRequest{}
 	}
 	return nil
 }

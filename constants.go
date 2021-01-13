@@ -32,6 +32,7 @@ const (
 	opClose           = -11
 	opSetAuth         = 100
 	opSetWatches      = 101
+	opGetEphemerals	  = 103
 	opError           = -1
 	// Not in protocol, used internally
 	opWatcherEvent = -2
@@ -215,7 +216,7 @@ var (
 		opClose:           "close",
 		opSetAuth:         "setAuth",
 		opSetWatches:      "setWatches",
-
+		opGetEphemerals:   "getEphemerals",
 		opWatcherEvent: "watcherEvent",
 	}
 )
