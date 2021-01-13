@@ -300,7 +300,7 @@ type reconfigRequest struct {
 
 type reconfigReponse getDataResponse
 
-// zk version 3.6 reconfig API
+// zk version 3.6 getEphemerals API
 type getEphemeralsRequest struct {
 	Path string
 }
