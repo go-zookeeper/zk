@@ -80,3 +80,45 @@ func TestDeadlockInClose(t *testing.T) {
 		t.Fatal("apparent deadlock!")
 	}
 }
+
+func TestGetEphemerals(t *testing.T) {
+
+	zkC, err := StartTestCluster(t, 3, ioutil.Discard, ioutil.Discard)
+	if err != nil {
+		panic(err)
+	}
+	defer zkC.Stop()
+
+	conn, evtC, err := zkC.ConnectAll()
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	waitForSession(ctx, evtC)
+
+	conn.Create("/zktest", []byte("placeholder"), 0, WorldACL(PermAll))
+	conn.Create("/zktest/testblabla", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+	conn.Create("/zktest/nonono", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+	conn.Create("/testE", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+	conn.Create("/testE2", []byte("placeholder"), FlagEphemeral, WorldACL(PermAll))
+
+	e1, _ := conn.GetEphemerals("/zktest")
+	if len(e1) != 2 {
+		t.Fatalf("GetEphemerals /zktest result should be 2, but got %d", len(e1))
+	}
+
+	e2, _ := conn.GetEphemerals("/")
+	if len(e2) != 4 {
+		t.Fatalf("GetEphemerals / result should be 4, but got %d", len(e2))
+	}
+
+	e3, _ := conn.GetEphemerals("/testE")
+	if len(e3) != 2 {
+		t.Fatalf("GetEphemerals /testE result should be 2, but got %d", len(e3))
+	}
+
+}

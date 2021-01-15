@@ -1021,6 +1021,23 @@ func (c *Conn) GetW(path string) ([]byte, *Stat, <-chan Event, error) {
 	return res.Data, &res.Stat, ech, err
 }
 
+// Gets all the ephemeral nodes matching path created by this session.
+// If path is "/" then it returns all ephemerals node. For more info refer to the ZK documentation.
+//
+// Returns all match path.
+func (c *Conn) GetEphemerals(path string) ([]string, error) {
+	if err := validatePath(path, false); err != nil {
+		return nil,  err
+	}
+
+	res := &getEphemeralsResponse{}
+	_, err := c.request(opGetEphemerals, &getEphemeralsRequest{Path: path}, res, nil)
+	if err == ErrConnectionClosed {
+		return nil, err
+	}
+	return res.Children, err
+}
+
 func (c *Conn) Set(path string, data []byte, version int32) (*Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, err
@@ -1356,23 +1373,4 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 	}
 
 	return nil
-}
-
-
-// Synchronously gets all the ephemeral nodes matching `path` created by this session.
-// If `path` is "/" then it returns all ephemerals node
-// Argument: `path` the prefix for query path
-// Return: string arr include all match path
-// for zk 3.6
-func (c *Conn) GetEphemerals(path string) ([]string, error) {
-	if err := validatePath(path, false); err != nil {
-		return nil,  err
-	}
-
-	res := &getEphemeralsResponse{}
-	_, err := c.request(opGetEphemerals, &getEphemeralsRequest{Path: path}, res, nil)
-	if err == ErrConnectionClosed {
-		return nil, err
-	}
-	return res.Children, err
 }
