@@ -9,3 +9,5 @@ License
 -------
 
 3-clause BSD. See LICENSE file.
+
+Please use issue feature
