@@ -138,7 +138,7 @@ func FLWRuok(servers []string, timeout time.Duration) []bool {
 			continue
 		}
 
-		if bytes.Equal(response[:4], []byte("imok")) {
+		if string(response[:4]) == "imok" {
 			oks[i] = true
 		}
 	}
