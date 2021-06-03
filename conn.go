@@ -73,6 +73,7 @@ type Conn struct {
 	xid              uint32
 	sessionTimeoutMs int32 // session timeout in milliseconds
 	passwd           []byte
+	readOnly         bool // accept connection to ZK server in read-only mode, requires ZK 3.4+
 
 	dialer         Dialer
 	hostProvider   HostProvider
@@ -193,6 +194,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		eventChan:      ec,
 		shouldQuit:     make(chan struct{}),
 		connectTimeout: 1 * time.Second,
+		readOnly:       false,
 		sendChan:       make(chan *request, sendChanSize),
 		requests:       make(map[int32]*request),
 		watchers:       make(map[watchPathType][]chan Event),
@@ -229,6 +231,13 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 func WithDialer(dialer Dialer) connOption {
 	return func(c *Conn) {
 		c.dialer = dialer
+	}
+}
+
+// WithReadOnly returns a connection option specifying the usage of ZK servers in readonly mode
+func WithReadOnly(readOnly bool) connOption {
+	return func(c *Conn) {
+		c.readOnly = readOnly
 	}
 }
 
@@ -638,6 +647,8 @@ func (c *Conn) authenticate() error {
 	if err != nil {
 		return err
 	}
+	n++
+	buf = append(buf, boolToByte(c.readOnly))
 
 	binary.BigEndian.PutUint32(buf[:4], uint32(n))
 
