@@ -54,6 +54,7 @@ type watchPathType struct {
 	wType watchType
 }
 
+// Dialer is a function to be used to establish a connection to a single host.
 type Dialer func(network, address string, timeout time.Duration) (net.Conn, error)
 
 // Logger is an interface that can be implemented to provide custom log output.
@@ -66,6 +67,7 @@ type authCreds struct {
 	auth   []byte
 }
 
+// Conn is the client connection and tracks all details for communication with the server.
 type Conn struct {
 	lastZxid         int64
 	sessionID        int64
@@ -138,6 +140,8 @@ type response struct {
 	err  error
 }
 
+// Event is an Znode event sent by the server.
+// Refer to EventType for more details.
 type Event struct {
 	Type   EventType
 	State  State
