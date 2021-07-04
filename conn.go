@@ -936,6 +936,7 @@ func (c *Conn) request(opcode int32, req interface{}, res interface{}, recvFunc 
 	}
 }
 
+// AddAuth adds an authentication config to the connection.
 func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	_, err := c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
 
@@ -962,6 +963,7 @@ func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	return nil
 }
 
+// Children returns the children of a znode.
 func (c *Conn) Children(path string) ([]string, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, err
@@ -975,6 +977,7 @@ func (c *Conn) Children(path string) ([]string, *Stat, error) {
 	return res.Children, &res.Stat, err
 }
 
+// ChildrenW returns the children of a znode and sets a watch.
 func (c *Conn) ChildrenW(path string) ([]string, *Stat, <-chan Event, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, nil, err
@@ -993,6 +996,7 @@ func (c *Conn) ChildrenW(path string) ([]string, *Stat, <-chan Event, error) {
 	return res.Children, &res.Stat, ech, err
 }
 
+// Get gets the contents of a znode.
 func (c *Conn) Get(path string) ([]byte, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, err
@@ -1025,6 +1029,7 @@ func (c *Conn) GetW(path string) ([]byte, *Stat, <-chan Event, error) {
 	return res.Data, &res.Stat, ech, err
 }
 
+// Set updates the contents of a znode.
 func (c *Conn) Set(path string, data []byte, version int32) (*Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, err
@@ -1038,6 +1043,10 @@ func (c *Conn) Set(path string, data []byte, version int32) (*Stat, error) {
 	return &res.Stat, err
 }
 
+// Create creates a znode.
+// The returned path is the new path assigned by the server, it may not be the
+// same as the input, for example when creating a sequence znode the returned path
+// will be the input path with a sequence number appended.
 func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string, error) {
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
@@ -1051,6 +1060,7 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 	return res.Path, err
 }
 
+// CreateContainer creates a container znode and returns the path.
 func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL) (string, error) {
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
@@ -1064,6 +1074,7 @@ func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL)
 	return res.Path, err
 }
 
+// CreateTTL creates a TTL znode, which will be automatically deleted by server after the TTL.
 func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl time.Duration) (string, error) {
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
@@ -1126,6 +1137,7 @@ func (c *Conn) CreateProtectedEphemeralSequential(path string, data []byte, acl 
 	return "", err
 }
 
+// Delete deletes a znode.
 func (c *Conn) Delete(path string, version int32) error {
 	if err := validatePath(path, false); err != nil {
 		return err
@@ -1135,6 +1147,7 @@ func (c *Conn) Delete(path string, version int32) error {
 	return err
 }
 
+// Exists tells the existence of a znode.
 func (c *Conn) Exists(path string) (bool, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return false, nil, err
@@ -1153,6 +1166,7 @@ func (c *Conn) Exists(path string) (bool, *Stat, error) {
 	return exists, &res.Stat, err
 }
 
+// ExistsW tells the existence of a znode and sets a watch.
 func (c *Conn) ExistsW(path string) (bool, *Stat, <-chan Event, error) {
 	if err := validatePath(path, false); err != nil {
 		return false, nil, nil, err
@@ -1178,6 +1192,7 @@ func (c *Conn) ExistsW(path string) (bool, *Stat, <-chan Event, error) {
 	return exists, &res.Stat, ech, err
 }
 
+// GetACL gets the ACLs of a znode.
 func (c *Conn) GetACL(path string) ([]ACL, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, err
@@ -1190,6 +1205,8 @@ func (c *Conn) GetACL(path string) ([]ACL, *Stat, error) {
 	}
 	return res.Acl, &res.Stat, err
 }
+
+// SetACL updates the ACLs of a znode.
 func (c *Conn) SetACL(path string, acl []ACL, version int32) (*Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, err
@@ -1203,6 +1220,9 @@ func (c *Conn) SetACL(path string, acl []ACL, version int32) (*Stat, error) {
 	return &res.Stat, err
 }
 
+// Sync flushes the channel between process and the leader of a given znode,
+// you may need it if you want identical views of ZooKeeper data for 2 client instances.
+// Please refer to the "Consistency Guarantees" section of ZK document for more details.
 func (c *Conn) Sync(path string) (string, error) {
 	if err := validatePath(path, false); err != nil {
 		return "", err
@@ -1216,6 +1236,7 @@ func (c *Conn) Sync(path string) (string, error) {
 	return res.Path, err
 }
 
+// MultiResponse is the result of a Multi call.
 type MultiResponse struct {
 	Stat   *Stat
 	String string
