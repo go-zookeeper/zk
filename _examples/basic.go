@@ -4,19 +4,19 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-zookeeper/zk"
+	"github.com/inf-rno/zk"
 )
 
 func main() {
-	c, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second) //*10)
+	c, _, err := zk.Connect([]string{"127.0.0.1:2181", "127.0.0.1:2182", "127.0.0.1:2183"}, time.Second) //*10)
 	if err != nil {
 		panic(err)
 	}
-	children, stat, ch, err := c.ChildrenW("/")
+	ch, err := c.AddWatch("/", true)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%+v %+v\n", children, stat)
-	e := <-ch
-	fmt.Printf("%+v\n", e)
+	for e := range ch {
+		fmt.Printf("%+v\n", e)
+	}
 }
