@@ -47,6 +47,8 @@ const (
 	watchTypeData watchType = iota
 	watchTypeExist
 	watchTypeChild
+	watchTypePersistent
+	watchTypePersistentRecursive
 )
 
 type watchPathType struct {
@@ -97,13 +99,14 @@ type Conn struct {
 	requests     map[int32]*request // Xid -> pending request
 	requestsLock sync.Mutex
 	watchers     map[watchPathType][]chan Event
+	recWatchers  map[watchPathType][]chan Event
 	watchersLock sync.Mutex
 	closeChan    chan struct{} // channel to tell send loop stop
 
 	// Debug (used by unit tests)
 	reconnectLatch   chan struct{}
 	setWatchLimit    int
-	setWatchCallback func([]*setWatchesRequest)
+	setWatchCallback func([]*setWatches2Request)
 
 	// Debug (for recurring re-auth hang)
 	debugCloseRecvLoop bool
@@ -200,6 +203,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		sendChan:       make(chan *request, sendChanSize),
 		requests:       make(map[int32]*request),
 		watchers:       make(map[watchPathType][]chan Event),
+		recWatchers:    make(map[watchPathType][]chan Event),
 		passwd:         emptyPassword,
 		logger:         DefaultLogger,
 		logInfo:        true, // default is true for backwards compatability
@@ -532,7 +536,7 @@ func (c *Conn) flushRequests(err error) {
 
 // Send event to all interested watchers
 func (c *Conn) notifyWatches(ev Event) {
-	var wTypes []watchType
+	wTypes := []watchType{watchTypePersistent}
 	switch ev.Type {
 	case EventNodeCreated:
 		wTypes = []watchType{watchTypeExist}
@@ -550,9 +554,20 @@ func (c *Conn) notifyWatches(ev Event) {
 		if watchers := c.watchers[wpt]; len(watchers) > 0 {
 			for _, ch := range watchers {
 				ch <- ev
-				close(ch)
+				if t != watchTypePersistent {
+					close(ch)
+				}
 			}
-			delete(c.watchers, wpt)
+			if t != watchTypePersistent {
+				delete(c.watchers, wpt)
+			}
+		}
+	}
+	for basePath, watchers := range c.recWatchers {
+		if strings.HasPrefix(ev.Path, basePath.path) {
+			for _, ch := range watchers {
+				ch <- ev
+			}
 		}
 	}
 }
@@ -562,97 +577,112 @@ func (c *Conn) invalidateWatches(err error) {
 	c.watchersLock.Lock()
 	defer c.watchersLock.Unlock()
 
-	if len(c.watchers) >= 0 {
-		for pathType, watchers := range c.watchers {
-			ev := Event{Type: EventNotWatching, State: StateDisconnected, Path: pathType.path, Err: err}
-			c.sendEvent(ev) // also publish globally
-			for _, ch := range watchers {
-				ch <- ev
-				close(ch)
+	f := func(w map[watchPathType][]chan Event) {
+		if len(w) >= 0 {
+			for pathType, watchers := range w {
+				ev := Event{Type: EventNotWatching, State: StateDisconnected, Path: pathType.path, Err: err}
+				c.sendEvent(ev) // also publish globally
+				for _, ch := range watchers {
+					ch <- ev
+					close(ch)
+				}
 			}
 		}
-		c.watchers = make(map[watchPathType][]chan Event)
 	}
+	f(c.watchers)
+	c.watchers = make(map[watchPathType][]chan Event)
+	f(c.recWatchers)
+	c.recWatchers = make(map[watchPathType][]chan Event)
 }
 
 func (c *Conn) sendSetWatches() {
 	c.watchersLock.Lock()
 	defer c.watchersLock.Unlock()
 
-	if len(c.watchers) == 0 {
-		return
-	}
-
-	// NB: A ZK server, by default, rejects packets >1mb. So, if we have too
-	// many watches to reset, we need to break this up into multiple packets
-	// to avoid hitting that limit. Mirroring the Java client behavior: we are
-	// conservative in that we limit requests to 128kb (since server limit is
-	// is actually configurable and could conceivably be configured smaller
-	// than default of 1mb).
-	limit := 128 * 1024
-	if c.setWatchLimit > 0 {
-		limit = c.setWatchLimit
-	}
-
-	var reqs []*setWatchesRequest
-	var req *setWatchesRequest
-	var sizeSoFar int
-
-	n := 0
-	for pathType, watchers := range c.watchers {
-		if len(watchers) == 0 {
-			continue
+	f := func(w map[watchPathType][]chan Event) {
+		if len(w) == 0 {
+			return
 		}
-		addlLen := 4 + len(pathType.path)
-		if req == nil || sizeSoFar+addlLen > limit {
-			if req != nil {
-				// add to set of requests that we'll send
-				reqs = append(reqs, req)
+
+		// NB: A ZK server, by default, rejects packets >1mb. So, if we have too
+		// many watches to reset, we need to break this up into multiple packets
+		// to avoid hitting that limit. Mirroring the Java client behavior: we are
+		// conservative in that we limit requests to 128kb (since server limit is
+		// is actually configurable and could conceivably be configured smaller
+		// than default of 1mb).
+		limit := 128 * 1024
+		if c.setWatchLimit > 0 {
+			limit = c.setWatchLimit
+		}
+
+		var reqs []*setWatches2Request
+		var req *setWatches2Request
+		var sizeSoFar int
+
+		n := 0
+		for pathType, watchers := range w {
+			if len(watchers) == 0 {
+				continue
 			}
-			sizeSoFar = 28 // fixed overhead of a set-watches packet
-			req = &setWatchesRequest{
-				RelativeZxid: c.lastZxid,
-				DataWatches:  make([]string, 0),
-				ExistWatches: make([]string, 0),
-				ChildWatches: make([]string, 0),
+			addlLen := 4 + len(pathType.path)
+			if req == nil || sizeSoFar+addlLen > limit {
+				if req != nil {
+					// add to set of requests that we'll send
+					reqs = append(reqs, req)
+				}
+				sizeSoFar = 28 // fixed overhead of a set-watches packet
+				req = &setWatches2Request{
+					RelativeZxid:               c.lastZxid,
+					DataWatches:                make([]string, 0),
+					ExistWatches:               make([]string, 0),
+					ChildWatches:               make([]string, 0),
+					PersistentWatches:          make([]string, 0),
+					PersistentRecursiveWatches: make([]string, 0),
+				}
 			}
-		}
-		sizeSoFar += addlLen
-		switch pathType.wType {
-		case watchTypeData:
-			req.DataWatches = append(req.DataWatches, pathType.path)
-		case watchTypeExist:
-			req.ExistWatches = append(req.ExistWatches, pathType.path)
-		case watchTypeChild:
-			req.ChildWatches = append(req.ChildWatches, pathType.path)
-		}
-		n++
-	}
-	if n == 0 {
-		return
-	}
-	if req != nil { // don't forget any trailing packet we were building
-		reqs = append(reqs, req)
-	}
-
-	if c.setWatchCallback != nil {
-		c.setWatchCallback(reqs)
-	}
-
-	go func() {
-		res := &setWatchesResponse{}
-		// TODO: Pipeline these so queue all of them up before waiting on any
-		// response. That will require some investigation to make sure there
-		// aren't failure modes where a blocking write to the channel of requests
-		// could hang indefinitely and cause this goroutine to leak...
-		for _, req := range reqs {
-			_, err := c.request(opSetWatches, req, res, nil)
-			if err != nil {
-				c.logger.Printf("Failed to set previous watches: %v", err)
-				break
+			sizeSoFar += addlLen
+			switch pathType.wType {
+			case watchTypeData:
+				req.DataWatches = append(req.DataWatches, pathType.path)
+			case watchTypeExist:
+				req.ExistWatches = append(req.ExistWatches, pathType.path)
+			case watchTypeChild:
+				req.ChildWatches = append(req.ChildWatches, pathType.path)
+			case watchTypePersistent:
+				req.PersistentWatches = append(req.PersistentWatches, pathType.path)
+			case watchTypePersistentRecursive:
+				req.PersistentRecursiveWatches = append(req.PersistentRecursiveWatches, pathType.path)
 			}
+			n++
 		}
-	}()
+		if n == 0 {
+			return
+		}
+		if req != nil { // don't forget any trailing packet we were building
+			reqs = append(reqs, req)
+		}
+
+		if c.setWatchCallback != nil {
+			c.setWatchCallback(reqs)
+		}
+
+		go func() {
+			res := &setWatches2Response{}
+			// TODO: Pipeline these so queue all of them up before waiting on any
+			// response. That will require some investigation to make sure there
+			// aren't failure modes where a blocking write to the channel of requests
+			// could hang indefinitely and cause this goroutine to leak...
+			for _, req := range reqs {
+				_, err := c.request(opSetWatches2, req, res, nil)
+				if err != nil {
+					c.logger.Printf("Failed to set previous watches: %v", err)
+					break
+				}
+			}
+		}()
+	}
+	f(c.watchers)
+	f(c.recWatchers)
 }
 
 func (c *Conn) authenticate() error {
@@ -886,7 +916,11 @@ func (c *Conn) addWatcher(path string, watchType watchType) <-chan Event {
 
 	ch := make(chan Event, 1)
 	wpt := watchPathType{path, watchType}
-	c.watchers[wpt] = append(c.watchers[wpt], ch)
+	if watchType == watchTypePersistentRecursive {
+		c.recWatchers[wpt] = append(c.recWatchers[wpt], ch)
+	} else {
+		c.watchers[wpt] = append(c.watchers[wpt], ch)
+	}
 	return ch
 }
 
@@ -968,6 +1002,31 @@ func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	c.credsMu.Unlock()
 
 	return nil
+}
+
+// AddWatch creates a persistent, recursive watch at the given path
+func (c *Conn) AddWatch(path string, recursive bool) (<-chan Event, error) {
+	if err := validatePath(path, false); err != nil {
+		return nil, err
+	}
+
+	var ech <-chan Event
+	mode := WatchModePersistent
+	wt := watchTypePersistent
+	if recursive {
+		mode = WatchModePersistentRecursive
+		wt = watchTypePersistentRecursive
+	}
+	res := &addWatchResponse{}
+	_, err := c.request(opAddWatch, &addWatchRequest{Path: path, Mode: mode}, res, func(req *request, res *responseHeader, err error) {
+		if err == nil {
+			ech = c.addWatcher(path, watchType(wt))
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ech, err
 }
 
 // Children returns the children of a znode.

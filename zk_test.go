@@ -743,7 +743,7 @@ func TestSetWatchers(t *testing.T) {
 	zk.reconnectLatch = make(chan struct{})
 	zk.setWatchLimit = 1024 // break up set-watch step into 1k requests
 	var setWatchReqs atomic.Value
-	zk.setWatchCallback = func(reqs []*setWatchesRequest) {
+	zk.setWatchCallback = func(reqs []*setWatches2Request) {
 		setWatchReqs.Store(reqs)
 	}
 

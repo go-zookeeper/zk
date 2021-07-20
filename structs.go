@@ -234,6 +234,13 @@ type setAclRequest struct {
 
 type setAclResponse statResponse
 
+type addWatchRequest struct {
+	Path string
+	Mode AddWatchMode
+}
+
+type addWatchResponse struct{}
+
 type SetDataRequest struct {
 	Path    string
 	Data    []byte
@@ -263,6 +270,17 @@ type setWatchesRequest struct {
 }
 
 type setWatchesResponse struct{}
+
+type setWatches2Request struct {
+	RelativeZxid               int64
+	DataWatches                []string
+	ExistWatches               []string
+	ChildWatches               []string
+	PersistentWatches          []string
+	PersistentRecursiveWatches []string
+}
+
+type setWatches2Response struct{}
 
 type syncRequest pathRequest
 type syncResponse pathResponse
@@ -624,6 +642,10 @@ func requestStructForOp(op int32) interface{} {
 		return &SetDataRequest{}
 	case opSetWatches:
 		return &setWatchesRequest{}
+	case opSetWatches2:
+		return &setWatches2Request{}
+	case opAddWatch:
+		return &addWatchRequest{}
 	case opSync:
 		return &syncRequest{}
 	case opSetAuth:
