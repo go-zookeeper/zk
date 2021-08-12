@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 // ErrNoServer indicates that an operation cannot be completed
@@ -74,7 +75,7 @@ type Conn struct {
 	state            State // must be 32-bit aligned
 	xid              uint32
 	sessionTimeoutMs int32 // session timeout in milliseconds
-	passwd           []byte
+	passwd           unsafe.Pointer
 
 	dialer         Dialer
 	hostProvider   HostProvider
@@ -200,7 +201,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		sendChan:       make(chan *request, sendChanSize),
 		requests:       make(map[int32]*request),
 		watchers:       make(map[watchPathType][]chan Event),
-		passwd:         emptyPassword,
+		passwd:         unsafe.Pointer(&emptyPassword),
 		logger:         DefaultLogger,
 		logInfo:        true, // default is true for backwards compatability
 		buf:            make([]byte, bufferSize),
@@ -310,6 +311,13 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 	}
 }
 
+func WithSessionIdAndPasswd(sessionID int64, passwd []byte) connOption{
+	return func(c *Conn) {
+		c.sessionID = sessionID
+		c.passwd = unsafe.Pointer(&passwd)
+	}
+}
+
 // Close will submit a close request with ZK and signal the connection to stop
 // sending and receiving packets.
 func (c *Conn) Close() {
@@ -331,6 +339,15 @@ func (c *Conn) State() State {
 // SessionID returns the current session id of the connection.
 func (c *Conn) SessionID() int64 {
 	return atomic.LoadInt64(&c.sessionID)
+}
+
+// Password returns the current session password of the connection.
+func (c *Conn) SessionPasswd() []byte {
+	return *(*[]byte)(atomic.LoadPointer(&c.passwd))
+}
+
+func (c *Conn) setSessionPasswd(passwd []byte) {
+	atomic.StorePointer(&c.passwd, unsafe.Pointer(&passwd))
 }
 
 // SetLogger sets the logger to be used for printing errors.
@@ -637,7 +654,7 @@ func (c *Conn) authenticate() error {
 		LastZxidSeen:    c.lastZxid,
 		TimeOut:         c.sessionTimeoutMs,
 		SessionID:       c.SessionID(),
-		Passwd:          c.passwd,
+		Passwd:          c.SessionPasswd(),
 	})
 	if err != nil {
 		return err
@@ -677,7 +694,7 @@ func (c *Conn) authenticate() error {
 	}
 	if r.SessionID == 0 {
 		atomic.StoreInt64(&c.sessionID, int64(0))
-		c.passwd = emptyPassword
+		c.setSessionPasswd(emptyPassword)
 		c.lastZxid = 0
 		c.setState(StateExpired)
 		return ErrSessionExpired
@@ -685,7 +702,7 @@ func (c *Conn) authenticate() error {
 
 	atomic.StoreInt64(&c.sessionID, r.SessionID)
 	c.setTimeouts(r.TimeOut)
-	c.passwd = r.Passwd
+	c.setSessionPasswd(r.Passwd)
 	c.setState(StateHasSession)
 
 	return nil
