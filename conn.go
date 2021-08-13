@@ -311,6 +311,8 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 	}
 }
 
+// WithSessionIdAndPasswd sets the session id and password to be used
+// for the first connection attempt
 func WithSessionIdAndPasswd(sessionID int64, passwd []byte) connOption{
 	return func(c *Conn) {
 		c.sessionID = sessionID
