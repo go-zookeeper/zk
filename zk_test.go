@@ -1142,7 +1142,7 @@ func TestSessionReconnectionFromSavedID(t *testing.T) {
 
 
 	// Re-establish the session from a different client with the session id and passwd
-	zk, eventChan, err = ts.ConnectWithOptions(15*time.Second, WithSessionIdAndPasswd(sessionID, append(passwd)))
+	zk, eventChan, err = ts.ConnectWithOptions(15*time.Second, WithSessionIdAndPasswd(sessionID, passwd))
 	if err != nil {
 		t.Fatal(err)
 	}

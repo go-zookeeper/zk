@@ -21,7 +21,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 )
 
 // ErrNoServer indicates that an operation cannot be completed
@@ -75,7 +74,7 @@ type Conn struct {
 	state            State // must be 32-bit aligned
 	xid              uint32
 	sessionTimeoutMs int32 // session timeout in milliseconds
-	passwd           unsafe.Pointer
+	passwd           []byte
 
 	dialer         Dialer
 	hostProvider   HostProvider
@@ -100,6 +99,7 @@ type Conn struct {
 	watchers     map[watchPathType][]chan Event
 	watchersLock sync.Mutex
 	closeChan    chan struct{} // channel to tell send loop stop
+	sessionLock sync.RWMutex
 
 	// Debug (used by unit tests)
 	reconnectLatch   chan struct{}
@@ -201,7 +201,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		sendChan:       make(chan *request, sendChanSize),
 		requests:       make(map[int32]*request),
 		watchers:       make(map[watchPathType][]chan Event),
-		passwd:         unsafe.Pointer(&emptyPassword),
+		passwd:         emptyPassword,
 		logger:         DefaultLogger,
 		logInfo:        true, // default is true for backwards compatability
 		buf:            make([]byte, bufferSize),
@@ -314,7 +314,7 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 func WithSessionIdAndPasswd(sessionID int64, passwd []byte) connOption{
 	return func(c *Conn) {
 		c.sessionID = sessionID
-		c.passwd = unsafe.Pointer(&passwd)
+		c.passwd = passwd
 	}
 }
 
@@ -338,16 +338,16 @@ func (c *Conn) State() State {
 
 // SessionID returns the current session id of the connection.
 func (c *Conn) SessionID() int64 {
-	return atomic.LoadInt64(&c.sessionID)
+	c.sessionLock.RLock()
+	defer c.sessionLock.RUnlock()
+	return c.sessionID
 }
 
 // Password returns the current session password of the connection.
 func (c *Conn) SessionPasswd() []byte {
-	return *(*[]byte)(atomic.LoadPointer(&c.passwd))
-}
-
-func (c *Conn) setSessionPasswd(passwd []byte) {
-	atomic.StorePointer(&c.passwd, unsafe.Pointer(&passwd))
+	c.sessionLock.RLock()
+	defer c.sessionLock.RUnlock()
+	return c.passwd
 }
 
 // SetLogger sets the logger to be used for printing errors.
@@ -693,16 +693,20 @@ func (c *Conn) authenticate() error {
 		return err
 	}
 	if r.SessionID == 0 {
-		atomic.StoreInt64(&c.sessionID, int64(0))
-		c.setSessionPasswd(emptyPassword)
+		c.sessionLock.Lock()
+		c.sessionID = 0
+		c.passwd = emptyPassword
+		c.sessionLock.Unlock()
 		c.lastZxid = 0
 		c.setState(StateExpired)
 		return ErrSessionExpired
 	}
 
-	atomic.StoreInt64(&c.sessionID, r.SessionID)
+	c.sessionLock.Lock()
+	c.sessionID = r.SessionID
+	c.passwd = r.Passwd
+	c.sessionLock.Unlock()
 	c.setTimeouts(r.TimeOut)
-	c.setSessionPasswd(r.Passwd)
 	c.setState(StateHasSession)
 
 	return nil
