@@ -96,24 +96,31 @@ func TestMultiLevelLock(t *testing.T) {
 
 func TestParseSeq(t *testing.T) {
 	const (
-		goLock = "_c_38553bd6d1d57f710ae70ddcc3d24715-lock-0000000000"
-		pyLock = "da5719988c244fc793f49ec3aa29b566__lock__0000000003"
+		goLock       = "_c_38553bd6d1d57f710ae70ddcc3d24715-lock-0000000000"
+		negativeLock = "_c_38553bd6d1d57f710ae70ddcc3d24715-lock--2147483648"
+		pyLock       = "da5719988c244fc793f49ec3aa29b566__lock__0000000003"
 	)
 
 	seq, err := parseSeq(goLock)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if seq != 0 {
 		t.Fatalf("Expected 0 instead of %d", seq)
+	}
+
+	seq, err = parseSeq(negativeLock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq != -2147483648 {
+		t.Fatalf("Expected -2147483648 instead of %d", seq)
 	}
 
 	seq, err = parseSeq(pyLock)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if seq != 3 {
 		t.Fatalf("Expected 3 instead of %d", seq)
 	}
