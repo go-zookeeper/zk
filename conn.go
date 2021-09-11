@@ -801,7 +801,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 
 		if res.Xid == -1 {
 			res := &watcherEvent{}
-			_, err := decodePacket(buf[16:blen], res)
+			_, err = decodePacket(buf[16:blen], res)
 			if err != nil {
 				return err
 			}
@@ -816,15 +816,17 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 			switch res.Type {
 			case EventNodeCreated:
 				wTypes = append(wTypes, watchTypeExist)
-			case EventNodeDeleted, EventNodeDataChanged:
-				wTypes = append(wTypes, watchTypeExist, watchTypeData, watchTypeChild)
+			case EventNodeDataChanged:
+				wTypes = append(wTypes, watchTypeExist, watchTypeData)
 			case EventNodeChildrenChanged:
 				wTypes = append(wTypes, watchTypeChild)
+			case EventNodeDeleted:
+				wTypes = append(wTypes, watchTypeExist, watchTypeData, watchTypeChild)
 			}
 			c.watchersLock.Lock()
 			for _, t := range wTypes {
 				wpt := watchPathType{res.Path, t}
-				if watchers := c.watchers[wpt]; watchers != nil && len(watchers) > 0 {
+				if watchers := c.watchers[wpt]; len(watchers) > 0 {
 					for _, ch := range watchers {
 						ch <- ev
 						close(ch)
