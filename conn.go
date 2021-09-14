@@ -44,7 +44,7 @@ const (
 type watchType int
 
 const (
-	watchTypeData = iota
+	watchTypeData watchType = iota
 	watchTypeExist
 	watchTypeChild
 )
@@ -530,6 +530,33 @@ func (c *Conn) flushRequests(err error) {
 	c.requestsLock.Unlock()
 }
 
+// Send event to all interested watchers
+func (c *Conn) notifyWatches(ev Event) {
+	var wTypes []watchType
+	switch ev.Type {
+	case EventNodeCreated:
+		wTypes = []watchType{watchTypeExist}
+	case EventNodeDataChanged:
+		wTypes = []watchType{watchTypeExist, watchTypeData}
+	case EventNodeChildrenChanged:
+		wTypes = []watchType{watchTypeChild}
+	case EventNodeDeleted:
+		wTypes = []watchType{watchTypeExist, watchTypeData, watchTypeChild}
+	}
+	c.watchersLock.Lock()
+	defer c.watchersLock.Unlock()
+	for _, t := range wTypes {
+		wpt := watchPathType{ev.Path, t}
+		if watchers := c.watchers[wpt]; len(watchers) > 0 {
+			for _, ch := range watchers {
+				ch <- ev
+				close(ch)
+			}
+			delete(c.watchers, wpt)
+		}
+	}
+}
+
 // Send error to all watchers and clear watchers map
 func (c *Conn) invalidateWatches(err error) {
 	c.watchersLock.Lock()
@@ -812,29 +839,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				Err:   nil,
 			}
 			c.sendEvent(ev)
-			wTypes := make([]watchType, 0, 2)
-			switch res.Type {
-			case EventNodeCreated:
-				wTypes = append(wTypes, watchTypeExist)
-			case EventNodeDataChanged:
-				wTypes = append(wTypes, watchTypeExist, watchTypeData)
-			case EventNodeChildrenChanged:
-				wTypes = append(wTypes, watchTypeChild)
-			case EventNodeDeleted:
-				wTypes = append(wTypes, watchTypeExist, watchTypeData, watchTypeChild)
-			}
-			c.watchersLock.Lock()
-			for _, t := range wTypes {
-				wpt := watchPathType{res.Path, t}
-				if watchers := c.watchers[wpt]; len(watchers) > 0 {
-					for _, ch := range watchers {
-						ch <- ev
-						close(ch)
-					}
-					delete(c.watchers, wpt)
-				}
-			}
-			c.watchersLock.Unlock()
+			c.notifyWatches(ev)
 		} else if res.Xid == -2 {
 			// Ping response. Ignore.
 		} else if res.Xid < 0 {
