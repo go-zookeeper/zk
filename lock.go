@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 var (
@@ -14,9 +15,17 @@ var (
 	ErrNotLocked = errors.New("zk: not locked")
 )
 
+const (
+	lockStateNone int32 = iota
+	lockStateAcquiring
+	lockStateAcquired
+	lockStateLeasing
+)
+
 // Lock is a mutual exclusion lock.
 type Lock struct {
 	c        *Conn
+	state    int32
 	path     string
 	acl      []ACL
 	lockPath string
@@ -53,10 +62,19 @@ func (l *Lock) Lock() error {
 // It will wait to return until the lock is acquired or an error occurs. If
 // this instance already has the lock then ErrDeadlock is returned.
 func (l *Lock) LockWithData(data []byte) error {
-	if l.lockPath != "" {
+	if !atomic.CompareAndSwapInt32(&l.state, lockStateNone, lockStateAcquiring) {
 		return ErrDeadlock
 	}
 
+	if err := l.lockWithData(data); err != nil {
+		atomic.StoreInt32(&l.state, lockStateNone)
+		return err
+	}
+	atomic.StoreInt32(&l.state, lockStateAcquired)
+	return nil
+}
+
+func (l *Lock) lockWithData(data []byte) error {
 	prefix := fmt.Sprintf("%s/lock-", l.path)
 
 	path := ""
@@ -148,13 +166,18 @@ func (l *Lock) LockWithData(data []byte) error {
 // Unlock releases an acquired lock. If the lock is not currently acquired by
 // this Lock instance than ErrNotLocked is returned.
 func (l *Lock) Unlock() error {
-	if l.lockPath == "" {
+	if !atomic.CompareAndSwapInt32(&l.state, lockStateAcquired, lockStateLeasing) {
 		return ErrNotLocked
 	}
 	if err := l.c.Delete(l.lockPath, -1); err != nil {
+		if err == ErrNoNode {
+			atomic.StoreInt32(&l.state, lockStateNone)
+			return ErrNotLocked
+		}
 		return err
 	}
 	l.lockPath = ""
 	l.seq = 0
+	atomic.StoreInt32(&l.state, lockStateNone)
 	return nil
 }

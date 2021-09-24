@@ -1,6 +1,8 @@
 package zk
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -91,6 +93,41 @@ func TestMultiLevelLock(t *testing.T) {
 	}
 	if err := l.Unlock(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLockConcurrency(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Stop()
+	zk, _, err := ts.ConnectAll()
+	if err != nil {
+		t.Fatalf("Connect returned error: %+v", err)
+	}
+	defer zk.Close()
+
+	acls := WorldACL(PermAll)
+
+	l := NewLock(zk, "/test-concurrency", acls)
+	acquired := int32(0)
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := l.Lock(); err != nil {
+				return
+			}
+			atomic.AddInt32(&acquired, 1)
+		}()
+	}
+	wg.Wait()
+	defer l.Unlock()
+	if acquired != 1 {
+		t.Fatalf("lock acquired wanted: 1, got: %d", acquired)
 	}
 }
 
