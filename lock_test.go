@@ -1,6 +1,7 @@
 package zk
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -128,6 +129,41 @@ func TestLockConcurrency(t *testing.T) {
 	defer l.Unlock()
 	if acquired != 1 {
 		t.Fatalf("lock acquired wanted: 1, got: %d", acquired)
+	}
+}
+
+func TestLockContext(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Stop()
+	zk, _, err := ts.ConnectAll()
+	if err != nil {
+		t.Fatalf("Connect returned error: %+v", err)
+	}
+	defer zk.Close()
+
+	acls := WorldACL(PermAll)
+	lockPath := "/test-context"
+
+	l1 := NewLock(zk, lockPath, acls)
+	if err := l1.Lock(); err != nil {
+		t.Fatal(err)
+	}
+	defer l1.Unlock()
+
+	l2 := NewLock(zk, lockPath, acls)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer cancel()
+	start := time.Now()
+	err = l2.LockContext(ctx)
+	elapsed := time.Now().Sub(start)
+	if err == nil || err != ErrAcquireLockTimeout {
+		t.Fatalf("expected ErrAcquireLockTimeout, got: %v", err)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("expected elapsed less than second, but %v", elapsed)
 	}
 }
 
