@@ -28,7 +28,7 @@ import (
 var ErrNoServer = errors.New("zk: could not connect to a server")
 
 // ErrInvalidPath indicates that an operation was being attempted on
-// an invalid path. (e.g. empty path)
+// an invalid path. (e.g. empty path).
 var ErrInvalidPath = errors.New("zk: invalid path")
 
 // DefaultLogger uses the stdlib log package for logging.
@@ -243,7 +243,7 @@ func WithHostProvider(hostProvider HostProvider) connOption {
 	}
 }
 
-// WithLogger returns a connection option specifying a non-default Logger
+// WithLogger returns a connection option specifying a non-default Logger.
 func WithLogger(logger Logger) connOption {
 	return func(c *Conn) {
 		c.logger = logger
@@ -251,7 +251,7 @@ func WithLogger(logger Logger) connOption {
 }
 
 // WithLogInfo returns a connection option specifying whether or not information messages
-// shoud be logged.
+// should be logged.
 func WithLogInfo(logInfo bool) connOption {
 	return func(c *Conn) {
 		c.logInfo = logInfo
@@ -301,7 +301,7 @@ func WithMaxBufferSize(maxBufferSize int) connOption {
 }
 
 // WithMaxConnBufferSize sets maximum buffer size used to send and encode
-// packets to Zookeeper server. The standard Zookeepeer client for java defaults
+// packets to Zookeeper server. The standard Zookeeper client for java defaults
 // to a limit of 1mb. This option should be used for non-standard server setup
 // where znode is bigger than default 1mb.
 func WithMaxConnBufferSize(maxBufferSize int) connOption {
@@ -947,7 +947,7 @@ func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	// Remember authdata so that it can be re-submitted on reconnect
 	//
 	// FIXME(prozlach): For now we treat "userfoo:passbar" and "userfoo:passbar2"
-	// as two different entries, which will be re-submitted on reconnet. Some
+	// as two different entries, which will be re-submitted on reconnect. Some
 	// research is needed on how ZK treats these cases and
 	// then maybe switch to something like "map[username] = password" to allow
 	// only single password for given user with users being unique.
@@ -1376,7 +1376,7 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 			return ctx.Err()
 		}
 		if res.err != nil {
-			return fmt.Errorf("failed conneciton setAuth request: %v", res.err)
+			return fmt.Errorf("failed connection setAuth request: %v", res.err)
 		}
 	}
 
