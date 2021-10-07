@@ -140,6 +140,11 @@ type statResponse struct {
 //
 
 type CheckVersionRequest PathVersionRequest
+
+func (r CheckVersionRequest) opCode() int32 {
+	return opCheck
+}
+
 type closeRequest struct{}
 type closeResponse struct{}
 
@@ -158,6 +163,10 @@ type connectResponse struct {
 	Passwd          []byte
 }
 
+type operation interface {
+	opCode() int32
+}
+
 type CreateRequest struct {
 	Path  string
 	Data  []byte
@@ -165,7 +174,15 @@ type CreateRequest struct {
 	Flags int32
 }
 
+func (r CreateRequest) opCode() int32 {
+	return opCreate
+}
+
 type CreateContainerRequest CreateRequest
+
+func (r CreateContainerRequest) opCode() int32 {
+	return opCreate
+}
 
 type CreateTTLRequest struct {
 	Path  string
@@ -175,8 +192,17 @@ type CreateTTLRequest struct {
 	Ttl   int64 // ms
 }
 
+func (r CreateTTLRequest) opCode() int32 {
+	return opCreate
+}
+
 type createResponse pathResponse
 type DeleteRequest PathVersionRequest
+
+func (r DeleteRequest) opCode() int32 {
+	return opDelete
+}
+
 type deleteResponse struct{}
 
 type errorResponse struct {
@@ -237,6 +263,10 @@ type SetDataRequest struct {
 	Path    string
 	Data    []byte
 	Version int32
+}
+
+func (r SetDataRequest) opCode() int32 {
+	return opSetData
 }
 
 type setDataResponse statResponse

@@ -1243,28 +1243,25 @@ type MultiResponse struct {
 	Error  error
 }
 
+var (
+	_ operation = (*CreateRequest)(nil)
+	_ operation = (*CreateContainerRequest)(nil)
+	_ operation = (*CreateTTLRequest)(nil)
+	_ operation = (*DeleteRequest)(nil)
+	_ operation = (*SetDataRequest)(nil)
+	_ operation = (*CheckVersionRequest)(nil)
+)
+
 // Multi executes multiple ZooKeeper operations or none of them. The provided
 // ops must be one of *CreateRequest, *DeleteRequest, *SetDataRequest, or
 // *CheckVersionRequest.
-func (c *Conn) Multi(ops ...interface{}) ([]MultiResponse, error) {
+func (c *Conn) Multi(ops ...operation) ([]MultiResponse, error) {
 	req := &multiRequest{
 		Ops:        make([]multiRequestOp, 0, len(ops)),
 		DoneHeader: multiHeader{Type: -1, Done: true, Err: -1},
 	}
 	for _, op := range ops {
-		var opCode int32
-		switch op.(type) {
-		case *CreateRequest:
-			opCode = opCreate
-		case *SetDataRequest:
-			opCode = opSetData
-		case *DeleteRequest:
-			opCode = opDelete
-		case *CheckVersionRequest:
-			opCode = opCheck
-		default:
-			return nil, fmt.Errorf("unknown operation type %T", op)
-		}
+		opCode := op.opCode()
 		req.Ops = append(req.Ops, multiRequestOp{multiHeader{opCode, false, -1}, op})
 	}
 	res := &multiResponse{}
