@@ -36,7 +36,7 @@ type TestCluster struct {
 
 // TODO: pull this into its own package to allow for better isolation of integration tests vs. unit
 // testing. This should be used on CI systems and local only when needed whereas unit tests should remain
-// fast and not rely on external dependecies.
+// fast and not rely on external dependencies.
 func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCluster, error) {
 	if testing.Short() {
 		t.Skip("ZK cluster tests skipped in short case.")
