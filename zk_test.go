@@ -1140,7 +1140,6 @@ func TestSessionReconnectionFromSavedID(t *testing.T) {
 	// Simulate network error by brutally closing the network connection.
 	_ = zk.conn.Close()
 
-
 	// Re-establish the session from a different client with the session id and passwd
 	zk, eventChan, err = ts.ConnectWithOptions(15*time.Second, WithSessionIdAndPasswd(sessionID, passwd))
 	if err != nil {
@@ -1166,7 +1165,6 @@ func TestSessionReconnectionFromSavedID(t *testing.T) {
 		t.Fatalf("session password mismatch: %v %v", passwd, passwd2)
 	}
 }
-
 
 func startSlowProxy(t *testing.T, up, down Rate, upstream string, adj func(ln *Listener)) (string, chan bool, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

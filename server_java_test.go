@@ -168,6 +168,4 @@ func waitForSession(ctx context.Context, eventChan <-chan Event) error {
 			return ctx.Err()
 		}
 	}
-
-	return nil
 }

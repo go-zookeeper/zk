@@ -99,7 +99,7 @@ type Conn struct {
 	watchers     map[watchPathType][]chan Event
 	watchersLock sync.Mutex
 	closeChan    chan struct{} // channel to tell send loop stop
-	sessionLock sync.RWMutex
+	sessionLock  sync.RWMutex
 
 	// Debug (used by unit tests)
 	reconnectLatch   chan struct{}
@@ -313,7 +313,7 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 
 // WithSessionIdAndPasswd sets the session id and password to be used
 // for the first connection attempt
-func WithSessionIdAndPasswd(sessionID int64, passwd []byte) connOption{
+func WithSessionIdAndPasswd(sessionID int64, passwd []byte) connOption {
 	return func(c *Conn) {
 		c.sessionID = sessionID
 		c.passwd = passwd
@@ -345,7 +345,7 @@ func (c *Conn) SessionID() int64 {
 	return c.sessionID
 }
 
-// Password returns the current session password of the connection.
+// SessionPassword returns the current session password of the connection.
 func (c *Conn) SessionPasswd() []byte {
 	c.sessionLock.RLock()
 	defer c.sessionLock.RUnlock()
