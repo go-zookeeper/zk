@@ -7,6 +7,16 @@ import (
 )
 
 var (
+	zkSrvrOutAfter370 = `Zookeeper version: 3.7.0-e3704b390a6697bfdf4b0bef79e3da7a4f6bac4b, built on 2021-03-17 09:46 UTC
+Latency min/avg/max: 0/1/10
+Received: 4207
+Sent: 4220
+Connections: 81
+Outstanding: 1
+Zxid: 0x110a7a8f37
+Mode: leader
+Node count: 306
+`
 	zkSrvrOut = `Zookeeper version: 3.4.6-1569965, built on 02/20/2014 09:09 GMT
 Latency min/avg/max: 0/1/10
 Received: 4207
@@ -32,7 +42,7 @@ func TestFLWRuok(t *testing.T) {
 	}
 	defer l.Close()
 
-	go tcpServer(l, "")
+	go tcpServer(l, "", zkSrvrOut)
 
 	oks := FLWRuok([]string{l.Addr().String()}, time.Second*10)
 	if len(oks) == 0 {
@@ -51,7 +61,7 @@ func TestFLWRuok(t *testing.T) {
 	}
 	defer l.Close()
 
-	go tcpServer(l, "dead")
+	go tcpServer(l, "dead", zkSrvrOut)
 
 	oks = FLWRuok([]string{l.Addr().String()}, time.Second*10)
 	if len(oks) == 0 {
@@ -70,7 +80,7 @@ func TestFLWSrvr(t *testing.T) {
 	}
 	defer l.Close()
 
-	go tcpServer(l, "")
+	go tcpServer(l, "", zkSrvrOut)
 
 	statsSlice, ok := FLWSrvr([]string{l.Addr().String()}, time.Second*10)
 	if !ok {
@@ -135,6 +145,35 @@ func TestFLWSrvr(t *testing.T) {
 	}
 }
 
+func TestFLWSrvrAfter370(t *testing.T) {
+	t.Parallel()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	go tcpServer(l, "", zkSrvrOutAfter370)
+
+	statsSlice, ok := FLWSrvr([]string{l.Addr().String()}, time.Second*10)
+	if !ok {
+		t.Errorf("failure indicated on 'srvr' parsing")
+	}
+	if len(statsSlice) == 0 {
+		t.Errorf("no *ServerStats instances returned")
+	}
+
+	stats := statsSlice[0]
+
+	if stats.Error != nil {
+		t.Fatalf("error seen in stats: %v", err.Error())
+	}
+
+	if stats.Version != "3.7.0-e3704b390a6697bfdf4b0bef79e3da7a4f6bac4b" {
+		t.Errorf("Version expected: 3.7.0-e3704b390a6697bfdf4b0bef79e3da7a4f6bac4b")
+	}
+}
+
 func TestFLWCons(t *testing.T) {
 	t.Parallel()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -143,7 +182,7 @@ func TestFLWCons(t *testing.T) {
 	}
 	defer l.Close()
 
-	go tcpServer(l, "")
+	go tcpServer(l, "", zkSrvrOut)
 
 	clients, ok := FLWCons([]string{l.Addr().String()}, time.Second*10)
 	if !ok {
@@ -282,17 +321,17 @@ func TestFLWCons(t *testing.T) {
 	}
 }
 
-func tcpServer(listener net.Listener, thing string) {
+func tcpServer(listener net.Listener, thing string, srvrOut string) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		go connHandler(conn, thing)
+		go connHandler(conn, thing, srvrOut)
 	}
 }
 
-func connHandler(conn net.Conn, thing string) {
+func connHandler(conn net.Conn, thing string, srvrOut string) {
 	defer conn.Close()
 
 	data := make([]byte, 4)
@@ -315,7 +354,7 @@ func connHandler(conn net.Conn, thing string) {
 		case "dead":
 			return
 		default:
-			conn.Write([]byte(zkSrvrOut))
+			conn.Write([]byte(srvrOut))
 		}
 	case "cons":
 		switch thing {
