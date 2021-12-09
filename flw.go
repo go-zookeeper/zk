@@ -106,6 +106,7 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 		ncnt, _ := strconv.ParseInt(match[11], 0, 64)
 
 		ss[i] = &ServerStats{
+			Server:      servers[i],
 			Sent:        sent,
 			Received:    recv,
 			NodeCount:   ncnt,
