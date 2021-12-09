@@ -43,7 +43,7 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 		response, err := fourLetterWord(servers[i], "srvr", timeout)
 
 		if err != nil {
-			ss[i] = &ServerStats{Error: err}
+			ss[i] = &ServerStats{Server: servers[i], Error: err}
 			imOk = false
 			continue
 		}
@@ -52,7 +52,7 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 
 		if matches == nil {
 			err := fmt.Errorf("unable to parse fields from zookeeper response (no regex matches)")
-			ss[i] = &ServerStats{Error: err}
+			ss[i] = &ServerStats{Server: servers[i], Error: err}
 			imOk = false
 			continue
 		}
@@ -75,7 +75,7 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 		buildTime, err := time.Parse("01/02/2006 15:04 MST", match[1])
 
 		if err != nil {
-			ss[i] = &ServerStats{Error: err}
+			ss[i] = &ServerStats{Server: servers[i], Error: err}
 			imOk = false
 			continue
 		}
@@ -83,7 +83,7 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 		parsedInt, err := strconv.ParseInt(match[9], 0, 64)
 
 		if err != nil {
-			ss[i] = &ServerStats{Error: err}
+			ss[i] = &ServerStats{Server: servers[i], Error: err}
 			imOk = false
 			continue
 		}
