@@ -1020,9 +1020,7 @@ func TestMaxBufferSize(t *testing.T) {
 	}
 	defer zk.Close()
 	// 1k buffer size, logs to custom test logger
-	zkLimited, _, err := ts.ConnectWithOptions(15*time.Second, WithMaxBufferSize(1024), func(conn *Conn) {
-		conn.SetLogger(&l)
-	})
+	zkLimited, _, err := ts.ConnectWithOptions(15*time.Second, WithMaxBufferSize(1024))
 	if err != nil {
 		t.Fatalf("Connect returned error: %+v", err)
 	}

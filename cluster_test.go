@@ -112,10 +112,8 @@ func TestNoQuorum(t *testing.T) {
 		t.Fatalf("Failed to connect and get session")
 	}
 	initialSessionID := zk.sessionID
-	DefaultLogger.Printf("    Session established: id=%d, timeout=%d", zk.sessionID, zk.sessionTimeoutMs)
 
 	// Kill the ZooKeeper leader and wait for the session to reconnect.
-	DefaultLogger.Printf("    Kill the leader")
 	disconnectWatcher1 := sl.NewWatcher(sessionStateMatcher(StateDisconnected))
 	hasSessionWatcher2 := sl.NewWatcher(sessionStateMatcher(StateHasSession))
 	tc.StopServer(hasSessionEvent1.Server)
@@ -135,7 +133,6 @@ func TestNoQuorum(t *testing.T) {
 	}
 
 	// Kill the ZooKeeper leader leaving the cluster without quorum.
-	DefaultLogger.Printf("    Kill the leader")
 	disconnectWatcher2 := sl.NewWatcher(sessionStateMatcher(StateDisconnected))
 	tc.StopServer(hasSessionEvent2.Server)
 
@@ -151,7 +148,6 @@ func TestNoQuorum(t *testing.T) {
 	// Make sure that we keep retrying connecting to the only remaining
 	// ZooKeeper server, but the attempts are being dropped because there is
 	// no quorum.
-	DefaultLogger.Printf("    Retrying no luck...")
 	var firstDisconnect *Event
 	begin := time.Now()
 	for time.Now().Sub(begin) < 6*time.Second {
@@ -269,7 +265,6 @@ func NewStateLogger(eventCh <-chan Event) *EventLogger {
 					sw.matchCh <- event
 				}
 			}
-			DefaultLogger.Printf("    event received: %v\n", event)
 			el.events = append(el.events, event)
 			el.lock.Unlock()
 		}
