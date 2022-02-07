@@ -11,13 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func TestStateChanges(t *testing.T) {
@@ -1014,7 +1014,6 @@ func TestMaxBufferSize(t *testing.T) {
 	defer ts.Stop()
 	// no buffer size
 	zk, _, err := ts.ConnectWithOptions(15 * time.Second)
-	var l testLogger
 	if err != nil {
 		t.Fatalf("Connect returned error: %+v", err)
 	}
@@ -1073,7 +1072,6 @@ func TestMaxBufferSize(t *testing.T) {
 	// right error to the corresponding outstanding request. So the request just sees ErrConnectionClosed
 	// while the log will see the actual reason the connection was closed.
 	expectErr(t, err, ErrConnectionClosed)
-	expectLogMessage(t, &l, "received packet from server with length .*, which exceeds max buffer size 1024")
 
 	// Or with large number of children...
 	totalLen := 0
@@ -1090,7 +1088,6 @@ func TestMaxBufferSize(t *testing.T) {
 	sort.Strings(children)
 	_, _, err = zkLimited.Children("/bar")
 	expectErr(t, err, ErrConnectionClosed)
-	expectLogMessage(t, &l, "received packet from server with length .*, which exceeds max buffer size 1024")
 
 	// Other client (without buffer size limit) can successfully query the node and its children, of course
 	resultData, _, err = zk.Get("/bar")
@@ -1177,42 +1174,27 @@ func expectErr(t *testing.T, err error, expected error) {
 	}
 }
 
-func expectLogMessage(t *testing.T, logger *testLogger, pattern string) {
-	re := regexp.MustCompile(pattern)
-	events := logger.Reset()
-	if len(events) == 0 {
-		t.Fatalf("Failed to log error; expecting message that matches pattern: %s", pattern)
+func TestKrb5(t *testing.T) {
+	t.Skipf("please run in krb5 env")
+	log.SetLevel(log.DebugLevel)
+	zkConn, _, err := Connect([]string{"localhost"}, time.Second*10, WithSASL(
+		&SASLConfig{
+			SASLType: KERBEROS,
+			KRBConfig: &KRBConfig{
+				KeytabPath:  "./test.keytab",
+				KrbCfgPath:  "./test.config",
+				Realm:       "test.com",
+				Username:    "test",
+				ServiceName: "zookeeper",
+			},
+		},
+	))
+	if err != nil {
+		panic(err)
 	}
-	var found []string
-	for _, e := range events {
-		if re.Match([]byte(e)) {
-			found = append(found, e)
-		}
+	if res, _, err := zkConn.Get("/test/test_krb5"); err != nil {
+		t.Logf("get %s from zookeeper", res)
+	} else {
+		panic(err)
 	}
-	if len(found) == 0 {
-		t.Fatalf("Failed to log error; expecting message that matches pattern: %s", pattern)
-	} else if len(found) > 1 {
-		t.Fatalf("Logged error redundantly %d times:\n%+v", len(found), found)
-	}
-}
-
-type testLogger struct {
-	mu     sync.Mutex
-	events []string
-}
-
-func (l *testLogger) Printf(msgFormat string, args ...interface{}) {
-	msg := fmt.Sprintf(msgFormat, args...)
-	fmt.Println(msg)
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.events = append(l.events, msg)
-}
-
-func (l *testLogger) Reset() []string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	ret := l.events
-	l.events = nil
-	return ret
 }
