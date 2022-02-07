@@ -32,6 +32,7 @@ const (
 	opClose           = -11
 	opSetAuth         = 100
 	opSetWatches      = 101
+	opSetSASL         = 102
 	opError           = -1
 	// Not in protocol, used internally
 	opWatcherEvent = -2
@@ -224,6 +225,7 @@ var (
 		opClose:           "close",
 		opSetAuth:         "setAuth",
 		opSetWatches:      "setWatches",
+		opSetSASL:         "setSASL",
 
 		opWatcherEvent: "watcherEvent",
 	}
@@ -263,3 +265,23 @@ var (
 		ModeStandalone: "standalone",
 	}
 )
+
+type SASLType uint8
+
+const (
+	NONESASL SASLType = iota
+	KERBEROS SASLType = iota
+)
+
+var (
+	saslTypeNames = map[SASLType]string{
+		KERBEROS: "kerberos",
+	}
+)
+
+func (s SASLType) String() string {
+	if name := saslTypeNames[s]; name != "" {
+		return name
+	}
+	return "none"
+}

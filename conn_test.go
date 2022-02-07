@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"sync"
 	"testing"
 	"time"
 )
@@ -29,15 +28,7 @@ func TestRecurringReAuthHang(t *testing.T) {
 	// Add auth.
 	conn.AddAuth("digest", []byte("test:test"))
 
-	var reauthCloseOnce sync.Once
 	reauthSig := make(chan struct{}, 1)
-	conn.resendZkAuthFn = func(ctx context.Context, c *Conn) error {
-		// in current implimentation the reauth might be called more than once based on various conditions
-		reauthCloseOnce.Do(func() { close(reauthSig) })
-		return resendZkAuth(ctx, c)
-	}
-
-	conn.debugCloseRecvLoop = true
 	currentServer := conn.Server()
 	zkC.StopServer(currentServer)
 	// wait connect to new zookeeper.
@@ -62,7 +53,6 @@ func TestDeadlockInClose(t *testing.T) {
 		shouldQuit:     make(chan struct{}),
 		connectTimeout: 1 * time.Second,
 		sendChan:       make(chan *request, sendChanSize),
-		logger:         DefaultLogger,
 	}
 
 	for i := 0; i < sendChanSize; i++ {
