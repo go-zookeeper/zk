@@ -71,12 +71,14 @@ func newLocalHostPortsFacade(inner HostProvider, ports []int) *localHostPortsFac
 func (lhpf *localHostPortsFacade) Len() int                    { return lhpf.inner.Len() }
 func (lhpf *localHostPortsFacade) Connected()                  { lhpf.inner.Connected() }
 func (lhpf *localHostPortsFacade) Init(servers []string) error { return lhpf.inner.Init(servers) }
-func (lhpf *localHostPortsFacade) Next() (string, bool) {
-	server, retryStart := lhpf.inner.Next()
+func (lhpf *localHostPortsFacade) Next() (string, string, bool) {
+	server, hostname, retryStart := lhpf.inner.Next()
+
+	fmt.Println("hostname, ", hostname)
 
 	// If we've already set up a mapping for that server, just return it.
 	if localMapping := lhpf.mapped[server]; localMapping != "" {
-		return localMapping, retryStart
+		return localMapping, hostname, retryStart
 	}
 
 	if lhpf.nextPort == len(lhpf.ports) {
@@ -86,7 +88,7 @@ func (lhpf *localHostPortsFacade) Next() (string, bool) {
 	localMapping := fmt.Sprintf("localhost:%d", lhpf.ports[lhpf.nextPort])
 	lhpf.mapped[server] = localMapping
 	lhpf.nextPort++
-	return localMapping, retryStart
+	return localMapping, hostname, retryStart
 }
 
 var _ HostProvider = &localHostPortsFacade{}
@@ -213,7 +215,7 @@ func TestDNSHostProviderRetryStart(t *testing.T) {
 	}
 
 	for i, td := range testdata {
-		_, retryStartGot := hp.Next()
+		_, _, retryStartGot := hp.Next()
 		if retryStartGot != td.retryStartWant {
 			t.Errorf("%d: retryStart=%v; want %v", i, retryStartGot, td.retryStartWant)
 		}
