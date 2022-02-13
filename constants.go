@@ -263,3 +263,23 @@ var (
 		ModeStandalone: "standalone",
 	}
 )
+
+type SASLType uint8
+
+const (
+	NO_SASL SASLType = iota
+	KERBEROS
+)
+
+var (
+	saslTypeNames = map[SASLType]string{
+		KERBEROS: "kerberos",
+	}
+)
+
+func (s SASLType) String() string {
+	if name := saslTypeNames[s]; name != "" {
+		return name
+	}
+	return "none"
+}

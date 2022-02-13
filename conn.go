@@ -113,6 +113,10 @@ type Conn struct {
 	logInfo bool // true if information messages are logged; false if only errors are logged
 
 	buf []byte
+
+	// sasl auth
+	hostname   string // host with addr
+	saslConfig *SASLConfig
 }
 
 // connOption represents a connection option.
@@ -158,9 +162,9 @@ type HostProvider interface {
 	Init(servers []string) error
 	// Len returns the number of servers.
 	Len() int
-	// Next returns the next server to connect to. retryStart will be true if we've looped through
+	// Next returns the next server/hostname to connect to. retryStart will be true if we've looped through
 	// all known servers without Connected() being called.
-	Next() (server string, retryStart bool)
+	Next() (server string, hostname string, retryStart bool)
 	// Notify the HostProvider of a successful connection.
 	Connected()
 }
@@ -205,6 +209,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		logInfo:        true, // default is true for backwards compatability
 		buf:            make([]byte, bufferSize),
 		resendZkAuthFn: resendZkAuth,
+		saslConfig:     &SASLConfig{SASLType: NO_SASL},
 	}
 
 	// Set provided options.
@@ -367,7 +372,7 @@ func (c *Conn) connect() error {
 	var retryStart bool
 	for {
 		c.serverMu.Lock()
-		c.server, retryStart = c.hostProvider.Next()
+		c.server, c.hostname, retryStart = c.hostProvider.Next()
 		c.serverMu.Unlock()
 
 		c.setState(StateConnecting)
@@ -715,6 +720,11 @@ func (c *Conn) authenticate() error {
 	c.passwd = r.Passwd
 	c.setState(StateHasSession)
 
+	switch c.saslConfig.SASLType {
+	case KERBEROS:
+		var krbAuth = &KerberosAuth{Config: c.saslConfig.KerberosConfig}
+		krbAuth.Authorize(c)
+	}
 	return nil
 }
 
