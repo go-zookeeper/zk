@@ -3,7 +3,9 @@ package zk
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/jcmturner/gofork/encoding/asn1"
 	"github.com/jcmturner/gokrb5/v8/asn1tools"
@@ -198,14 +200,96 @@ func (k *KerberosAuth) Authorize(c *Conn) error {
 			return fmt.Errorf("failed to init session context while performing kerberos authentication, err: %s", err)
 		}
 
-		var res = &setSaslResponse{}
-		if _, err = c.sendRequest(opSetSASL, &getSaslRequest{packBytes}, res, nil); err != nil {
-			return fmt.Errorf("failed to handshake with kerberos, err: %s", err)
+		if err = k.writePackage(c, packBytes); err != nil {
+			return err
 		}
-		if k.step == GSSAPI_VERIFY {
-			recvBytes = []byte(res.Token)
-		} else if k.step == GSSAPI_FINISH {
+
+		if recvBytes, err = k.readPackage(c); err != nil {
+			return err
+		}
+
+		if k.step == GSSAPI_FINISH {
 			return nil
 		}
+	}
+}
+
+func (k *KerberosAuth) writePackage(c *Conn, payload []byte) error {
+	var sz = bufferSize
+	if c.maxBufferSize > 0 && c.maxBufferSize < bufferSize {
+		sz = c.maxBufferSize
+	}
+	var buffer = make([]byte, sz)
+
+	header := &requestHeader{c.nextXid(), opSetSASL}
+	headerSize, err := encodePacket(buffer, header)
+	if err != nil {
+		return fmt.Errorf("failed to decode header, err: %s", err)
+	}
+
+	payloadSize, err := encodePacket(buffer[4+headerSize:], &getSaslRequest{payload})
+	if err != nil {
+		return fmt.Errorf("failed to decode payload, err: %s", err)
+	}
+
+	var packetSize = headerSize + payloadSize
+	binary.BigEndian.PutUint32(buffer[:4], uint32(packetSize))
+	c.conn.SetWriteDeadline(time.Now().Add(c.recvTimeout))
+	_, err = c.conn.Write(buffer[:packetSize+4])
+	c.conn.SetWriteDeadline(time.Time{})
+	if err != nil {
+		return fmt.Errorf("failed to write packet, err: %s", err)
+	}
+	return nil
+}
+
+func (k *KerberosAuth) readPackage(c *Conn) ([]byte, error) {
+	var sz = bufferSize
+	if c.maxBufferSize > 0 && c.maxBufferSize < bufferSize {
+		sz = c.maxBufferSize
+	}
+	var buffer = make([]byte, sz)
+
+	// package length
+	c.conn.SetReadDeadline(time.Now().Add(c.recvTimeout))
+	_, err := io.ReadFull(c.conn, buffer[:4])
+	if err != nil {
+		return nil, fmt.Errorf("failed to read package length: %s", err)
+	}
+
+	var packetSize = int(binary.BigEndian.Uint32(buffer[:4]))
+	if cap(buffer) < packetSize {
+		if c.maxBufferSize > 0 && packetSize > c.maxBufferSize {
+			return nil, fmt.Errorf("packet length %d exceeds max buffer size %d", packetSize, c.maxBufferSize)
+		}
+		buffer = make([]byte, packetSize)
+	}
+
+	if _, err = io.ReadFull(c.conn, buffer[:packetSize]); err != nil {
+		return nil, fmt.Errorf("failed to read packet, err: %s", err)
+	}
+
+	var header = responseHeader{}
+	if _, err = decodePacket(buffer[:16], &header); err != nil {
+		return nil, fmt.Errorf("failed to decode header, err: %s", err)
+	}
+
+	if header.Zxid > 0 {
+		c.lastZxid = header.Zxid
+	}
+
+	if header.Err != errOk {
+		return nil, header.Err.toError()
+	}
+	var resp = &setSaslResponse{}
+	if _, err = decodePacket(buffer[16:packetSize], resp); err != nil {
+		// response doesn't contain body when kerberos auth in GSSAPI_FINISH step
+		if err != ErrShortBuffer {
+			return nil, fmt.Errorf("failed to decode response, err: %s", err)
+		} else {
+			return nil, nil
+		}
+	} else {
+		return []byte(resp.Token), nil
 	}
 }
