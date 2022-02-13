@@ -41,7 +41,7 @@ const (
 
 type KerberosAuth struct {
 	Config *KerberosConfig
-	ticket messages.Ticket  // client to service ticket
+	ticket messages.Ticket     // client to service ticket
 	encKey types.EncryptionKey // service session key
 	step   int
 }
@@ -109,7 +109,6 @@ func (k *KerberosAuth) createKrb5Token(
 		aprBytes = append(aprBytes, tb...)
 		return aprBytes, nil
 	}
-
 }
 
 /*
@@ -168,34 +167,39 @@ func (k *KerberosAuth) initSecContext(bytes []byte, krbCli *krb5client.Client) (
 }
 
 /* This does the handshake for authorization */
-func (k *KerberosAuth) Authorize(zkConn *Conn) error {
+func (k *KerberosAuth) Authorize(c *Conn) error {
 	// create kerberos client
-	krbCli, err := newKerberosClient(zkConn.saslConfig.KerberosConfig)
+	krbCli, err := newKerberosClient(c.saslConfig.KerberosConfig)
 	if err != nil {
-		return fmt.Errorf("fail to create kerberos client, err: %s", err)
+		return fmt.Errorf("failed to create kerberos client, err: %s", err)
 	}
 	// kerberos client login for TGT token
 	if err = krbCli.Login(); err != nil {
-		return fmt.Errorf("kerberos client fail to login, err: %s", err)
+		return fmt.Errorf("kerberos client fails to login, err: %s", err)
 	}
+	defer krbCli.Destroy()
 
 	// construct SPN using serviceName and host, format: zookeeper/host
-	spn := fmt.Sprintf("%s/%s", k.Config.ServiceName, strings.SplitN(zkConn.hostname, ":", 2)[0])
+	spn := fmt.Sprintf("%s/%s", k.Config.ServiceName, strings.SplitN(c.hostname, ":", 2)[0])
 
 	// kerberos client obtain TGS token
 	if k.ticket, k.encKey, err = krbCli.GetServiceTicket(spn); err != nil {
-		return fmt.Errorf("kerberos client fail to get service ticket, err: %s", err)
+		return fmt.Errorf("kerberos client fails to obtain service ticket, err: %s", err)
 	}
+	var (
+		recvBytes []byte = nil
+		packBytes []byte = nil
+	)
+
+	// client handshakes with zookeeper service
 	k.step = GSSAPI_INITIAL
-	var recvBytes []byte = nil
-	var packBytes []byte = nil
-	defer krbCli.Destroy()
 	for {
 		if packBytes, err = k.initSecContext(recvBytes, krbCli); err != nil {
 			return fmt.Errorf("failed to init session context while performing kerberos authentication, err: %s", err)
 		}
+
 		var res = &setSaslResponse{}
-		if _, err = zkConn.sendRequest(opSetAuth, &getSaslRequest{packBytes}, res, nil); err != nil {
+		if _, err = c.sendRequest(opSetSASL, &getSaslRequest{packBytes}, res, nil); err != nil {
 			return fmt.Errorf("failed to handshake with kerberos, err: %s", err)
 		}
 		if k.step == GSSAPI_VERIFY {
@@ -204,12 +208,4 @@ func (k *KerberosAuth) Authorize(zkConn *Conn) error {
 			return nil
 		}
 	}
-}
-
-func writePackage(zkConn *Conn, payload []byte) error {
-
-} 
-
-func readPackage(zkConn *Conn) ([]byte, error) {
-	
 }

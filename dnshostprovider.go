@@ -44,7 +44,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 		}
 		for _, addr := range addrs {
 			found = append(found, net.JoinHostPort(addr, port))
-			hostMap[addr] = server
+			hostMap[net.JoinHostPort(addr, port)] = server
 		}
 	}
 
