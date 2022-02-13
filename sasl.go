@@ -222,7 +222,7 @@ func (k *KerberosAuth) writePackage(c *Conn, payload []byte) error {
 	var buffer = make([]byte, sz)
 
 	header := &requestHeader{c.nextXid(), opSetSASL}
-	headerSize, err := encodePacket(buffer, header)
+	headerSize, err := encodePacket(buffer[4:], header)
 	if err != nil {
 		return fmt.Errorf("failed to decode header, err: %s", err)
 	}
