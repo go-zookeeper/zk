@@ -200,9 +200,12 @@ func (k *KerberosAuth) Authorize(ctx context.Context, c *Conn) error {
 			return err
 		}
 
-		var saslResp = &setSaslResponse{}
-		var recvChan <-chan response
-		if recvChan, err = c.sendRequest(opSetSASL, &getSaslRequest{packBytes}, saslResp, nil); err != nil {
+		var (
+			saslReq  = &setSaslRequest{string(packBytes)}
+			saslRes  = &setSaslResponse{}
+			recvChan <-chan response
+		)
+		if recvChan, err = c.sendRequest(opSetSASL, saslReq, saslRes, nil); err != nil {
 			c.logger.Printf("failed to send setSASL request while performing kerberos authentication, err: %s", err)
 			return err
 		}
@@ -227,7 +230,7 @@ func (k *KerberosAuth) Authorize(ctx context.Context, c *Conn) error {
 		if k.step == GSSAPI_FINISH {
 			return nil
 		} else if k.step == GSSAPI_VERIFY {
-			recvBytes = []byte(saslResp.Token)
+			recvBytes = []byte(saslRes.Token)
 		}
 	}
 }

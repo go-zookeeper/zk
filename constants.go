@@ -11,6 +11,7 @@ const (
 	DefaultPort = 2181
 )
 
+// https://github.com/apache/zookeeper/blob/c74658d398cdc1d207aa296cb6e20de00faec03e/zookeeper-server/src/main/java/org/apache/zookeeper/ZooDefs.java
 const (
 	opNotify          = 0
 	opCreate          = 1
