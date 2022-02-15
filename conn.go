@@ -726,17 +726,6 @@ func (c *Conn) authenticate() error {
 	c.passwd = r.Passwd
 	c.setState(StateHasSession)
 
-	switch c.saslConfig.SASLType {
-	case KERBEROS:
-		var krbAuth = &KerberosAuth{Config: c.saslConfig.KerberosConfig}
-		if err := krbAuth.Authorize(c); err != nil {
-			c.logger.Printf("failed to authorize with kerberos, err: %s, zookeeper server: %s", err, c.hostname)
-			return err
-		} else {
-			c.logger.Printf("kerberos authorize successfully, zookeeper server: %s", c.hostname)
-		}
-	}
-
 	return nil
 }
 
@@ -888,6 +877,12 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				}
 				if req.recvFunc != nil {
 					req.recvFunc(req, &res, err)
+				}
+
+				// when kerberos auth in GSSAPI_FINISH stage, won't return body data.
+				if req.opcode == opSetSASL && c.saslConfig.SASLType == KERBEROS && err == ErrShortBuffer && res.Err == 0 {
+					req.recvStruct = setSaslResponse{string([]byte{})}
+					err = nil
 				}
 
 				req.recvChan <- response{res.Zxid, err}
@@ -1368,6 +1363,17 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 
 	c.credsMu.Lock()
 	defer c.credsMu.Unlock()
+
+	switch c.saslConfig.SASLType {
+	case KERBEROS:
+		var krbAuth = &KerberosAuth{Config: c.saslConfig.KerberosConfig}
+		if err := krbAuth.Authorize(ctx, c); err != nil {
+			c.logger.Printf("failed to authorize with kerberos, err: %s, zookeeper server: %s", err, c.hostname)
+			return err
+		} else {
+			c.logger.Printf("kerberos authorize successfully, zookeeper server: %s", c.hostname)
+		}
+	}
 
 	if c.logInfo {
 		c.logger.Printf("re-submitting `%d` credentials after reconnect", len(c.creds))

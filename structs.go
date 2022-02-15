@@ -634,6 +634,8 @@ func requestStructForOp(op int32) interface{} {
 		return &multiRequest{}
 	case opReconfig:
 		return &reconfigRequest{}
+	case opSetSASL:
+		return &setSaslRequest{}
 	}
 	return nil
 }
