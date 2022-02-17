@@ -215,9 +215,12 @@ func TestDNSHostProviderRetryStart(t *testing.T) {
 	}
 
 	for i, td := range testdata {
-		_, _, retryStartGot := hp.Next()
+		_, hostname, retryStartGot := hp.Next()
 		if retryStartGot != td.retryStartWant {
 			t.Errorf("%d: retryStart=%v; want %v", i, retryStartGot, td.retryStartWant)
+		}
+		if hostname != "foo.example.com:12345" {
+			t.Errorf("hostname expect %s, but get %s", "foo.example.com:12345", hostname)
 		}
 		if td.callConnected {
 			hp.Connected()
