@@ -35,16 +35,21 @@ type KerberosConfig struct {
 const (
 	TOK_ID_KRB_AP_REQ  = 256
 	GSSAPI_GENERIC_TAG = 0x60
-	GSSAPI_INITIAL     = 1
-	GSSAPI_VERIFY      = 2
-	GSSAPI_FINISH      = 3
+)
+
+type GSSAPI_STEP int
+
+const (
+	GSSAPI_INITIAL GSSAPI_STEP = iota
+	GSSAPI_VERIFY
+	GSSAPI_FINISH
 )
 
 type KerberosAuth struct {
 	Config *KerberosConfig
 	ticket messages.Ticket     // client to service ticket
 	encKey types.EncryptionKey // service session key
-	step   int
+	step   GSSAPI_STEP
 }
 
 // newKerberosClient creates kerberos client used to obtain TGT and TGS tokens.
@@ -69,83 +74,20 @@ func newKerberosClient(c *KerberosConfig) (*krb5client.Client, error) {
 	}
 }
 
-func (k *KerberosAuth) newAuthenticatorChecksum() []byte {
-	a := make([]byte, 24)
-	flags := []int{gssapi.ContextFlagInteg, gssapi.ContextFlagConf}
-	binary.LittleEndian.PutUint32(a[:4], 16)
-	for _, i := range flags {
-		f := binary.LittleEndian.Uint32(a[20:24])
-		f |= uint32(i)
-		binary.LittleEndian.PutUint32(a[20:24], f)
-	}
-	return a
-}
-
-/*
-*
-* Construct Kerberos AP_REQ package, conforming to RFC-4120
-* https://tools.ietf.org/html/rfc4120#page-84
-*
- */
-func (k *KerberosAuth) createKrb5Token(
-	domain string, cname types.PrincipalName,
-	ticket messages.Ticket, encKey types.EncryptionKey) ([]byte, error) {
-	auth, err := types.NewAuthenticator(domain, cname)
-	if err != nil {
-		return nil, err
-	}
-	auth.Cksum = types.Checksum{
-		CksumType: chksumtype.GSSAPI,
-		Checksum:  k.newAuthenticatorChecksum(),
-	}
-	if APReq, err := messages.NewAPReq(ticket, encKey, auth); err != nil {
-		return nil, err
-	} else {
-		aprBytes := make([]byte, 2)
-		binary.BigEndian.PutUint16(aprBytes, TOK_ID_KRB_AP_REQ)
-		tb, err := APReq.Marshal()
-		if err != nil {
-			return nil, err
-		}
-		aprBytes = append(aprBytes, tb...)
-		return aprBytes, nil
-	}
-}
-
-/*
-*
-* Append the GSS-API header to the payload, conforming to RFC-2743
-* Section 3.1, Mechanism-Independent Token Format
-*
-* https://tools.ietf.org/html/rfc2743#page-81
-*
-* GSSAPIHeader + <specific mechanism payload>
-*
- */
-func (k *KerberosAuth) appendGSSAPIHeader(payload []byte) ([]byte, error) {
-	oidBytes, err := asn1.Marshal(gssapi.OIDKRB5.OID())
-	if err != nil {
-		return nil, err
-	}
-	tkoLengthBytes := asn1tools.MarshalLengthBytes(len(oidBytes) + len(payload))
-	gssapiHeader := append([]byte{GSSAPI_GENERIC_TAG}, tkoLengthBytes...)
-	gssapiHeader = append(gssapiHeader, oidBytes...)
-	GSSPackage := append(gssapiHeader, payload...)
-	return GSSPackage, nil
-}
-
 func (k *KerberosAuth) initSecContext(bytes []byte, krbCli *krb5client.Client) ([]byte, error) {
 	switch k.step {
 	case GSSAPI_INITIAL:
-		krb5Token, err := k.createKrb5Token(
+		if krb5Token, err := createKrb5Token(
 			krbCli.Credentials.Domain(),
 			krbCli.Credentials.CName(),
-			k.ticket, k.encKey)
-		if err != nil {
+			k.ticket, k.encKey,
+		); err != nil {
 			return nil, err
+		} else {
+			k.step = GSSAPI_VERIFY
+			return appendGSSAPIHeader(krb5Token)
 		}
-		k.step = GSSAPI_VERIFY
-		return k.appendGSSAPIHeader(krb5Token)
+
 	case GSSAPI_VERIFY:
 		wrapTokenReq := gssapi.WrapToken{}
 		if err := wrapTokenReq.Unmarshal(bytes, true); err != nil {
@@ -202,10 +144,10 @@ func (k *KerberosAuth) Authorize(ctx context.Context, c *Conn) error {
 
 		var (
 			saslReq  = &setSaslRequest{string(packBytes)}
-			saslRes  = &setSaslResponse{}
+			saslRsp  = &setSaslResponse{}
 			recvChan <-chan response
 		)
-		if recvChan, err = c.sendRequest(opSetSASL, saslReq, saslRes, nil); err != nil {
+		if recvChan, err = c.sendRequest(opSetSASL, saslReq, saslRsp, nil); err != nil {
 			c.logger.Printf("failed to send setSASL request while performing kerberos authentication, err: %s", err)
 			return err
 		}
@@ -230,7 +172,74 @@ func (k *KerberosAuth) Authorize(ctx context.Context, c *Conn) error {
 		if k.step == GSSAPI_FINISH {
 			return nil
 		} else if k.step == GSSAPI_VERIFY {
-			recvBytes = []byte(saslRes.Token)
+			recvBytes = []byte(saslRsp.Token)
 		}
 	}
+}
+
+/*
+*
+* Construct Kerberos AP_REQ package, conforming to RFC-4120
+* https://tools.ietf.org/html/rfc4120#page-84
+*
+ */
+func createKrb5Token(
+	domain string, cname types.PrincipalName,
+	ticket messages.Ticket, encKey types.EncryptionKey) ([]byte, error) {
+	if auth, err := types.NewAuthenticator(domain, cname); err != nil {
+		return nil, err
+	} else {
+
+		auth.Cksum = types.Checksum{
+			CksumType: chksumtype.GSSAPI,
+			Checksum:  createCheckSum(),
+		}
+		APReq, err := messages.NewAPReq(ticket, encKey, auth)
+		if err != nil {
+			return nil, err
+		}
+		aprBytes := make([]byte, 2)
+		binary.BigEndian.PutUint16(aprBytes, TOK_ID_KRB_AP_REQ)
+		reqBytes, err := APReq.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		return append(aprBytes, reqBytes...), nil
+	}
+}
+
+/*
+*
+* Append the GSS-API header to the payload, conforming to RFC-2743
+* Section 3.1, Mechanism-Independent Token Format
+*
+* https://tools.ietf.org/html/rfc2743#page-81
+*
+* GSSAPIHeader + <specific mechanism payload>
+*
+ */
+func appendGSSAPIHeader(payload []byte) ([]byte, error) {
+	oidBytes, err := asn1.Marshal(gssapi.OIDKRB5.OID())
+	if err != nil {
+		return nil, err
+	}
+	lengthBytes := asn1tools.MarshalLengthBytes(len(oidBytes) + len(payload))
+	gssapiHeader := append([]byte{GSSAPI_GENERIC_TAG}, lengthBytes...)
+	gssapiHeader = append(gssapiHeader, oidBytes...)
+	gssapiPacket := append(gssapiHeader, payload...)
+	return gssapiPacket, nil
+}
+
+func createCheckSum() []byte {
+	var checkSum = make([]byte, 24)
+	binary.LittleEndian.PutUint32(checkSum[:4], 16)
+	for _, flag := range []uint32{
+		uint32(gssapi.ContextFlagInteg),
+		uint32(gssapi.ContextFlagConf),
+	} {
+		binary.LittleEndian.PutUint32(checkSum[20:24],
+			binary.LittleEndian.Uint32(checkSum[20:24])|flag,
+		)
+	}
+	return checkSum
 }
