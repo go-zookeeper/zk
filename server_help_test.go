@@ -10,12 +10,42 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jcmturner/krb5test"
 )
 
 const (
 	_testConfigName   = "zoo.cfg"
 	_testMyIDFileName = "myid"
+	_testJaasFileName = "jaas.conf"
+	_testKeytabName   = "test.keytab"
+	_testKrb5CfgName  = "krb5.conf"
 )
+
+var (
+	// test case in krb5 env
+	testKrb5  = false
+	kdcServer *krb5test.KDC
+)
+
+var jassdata = `
+Server {
+com.sun.security.auth.module.Krb5LoginModule required
+useKeyTab=true
+keyTab="%s"
+storeKey=true
+useTicketCache=false
+principal="zookeeper/localhost";
+};
+Client {
+com.sun.security.auth.module.Krb5LoginModule required
+useKeyTab=true
+keyTab="%s"
+storeKey=true
+useTicketCache=false
+principal="zookeeper/localhost";
+};
+`
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
@@ -99,6 +129,20 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 		_, err = fmt.Fprintf(fi, "%d\n", serverN+1)
 		fi.Close()
 		requireNoError(t, err)
+
+		if testKrb5 {
+			krb5Cfg, _ := kdcServer.KRB5Conf.JSON()
+			keytab, _ := kdcServer.Keytab.Marshal()
+			krb5ConfigPath := filepath.Join(srvPath, _testKrb5CfgName)
+			krb5KeytabPath := filepath.Join(srvPath, _testKeytabName)
+			krb5JaasPath := filepath.Join(srvPath, _testJaasFileName)
+			err = ioutil.WriteFile(krb5ConfigPath, []byte(krb5Cfg), os.ModePerm)
+			requireNoError(t, err)
+			err = ioutil.WriteFile(krb5KeytabPath, keytab, os.ModePerm)
+			requireNoError(t, err)
+			err = ioutil.WriteFile(krb5JaasPath, []byte(fmt.Sprintf(jassdata, krb5KeytabPath, krb5KeytabPath)), os.ModePerm)
+			requireNoError(t, err)
+		}
 
 		srv, err := NewIntegrationTestServer(t, cfgPath, stdout, stderr)
 		requireNoError(t, err)

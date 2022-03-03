@@ -51,6 +51,11 @@ func NewIntegrationTestServer(t *testing.T, configPath string, stdout, stderr io
 	superString := `SERVER_JVMFLAGS=-Dzookeeper.DigestAuthenticationProvider.superDigest=super:D/InIHSb7yEEbrWz8b9l71RjZJU=`
 	// enable TTL
 	superString += ` -Dzookeeper.extendedTypesEnabled=true -Dzookeeper.emulate353TTLNodes=true`
+	// enable krb5 auth
+	if testKrb5 {
+		dir, _ := filepath.Split(configPath)
+		superString += fmt.Sprintf(` -Djava.security.auth.login.config=%s/%s`, dir, _testJaasFileName)
+	}
 
 	return &server{
 		cmdString: filepath.Join(zkPath, "zkServer.sh"),
@@ -147,6 +152,11 @@ func (sc ServerConfig) Marshall(w io.Writer) error {
 			srv.LeaderElectionPort = DefaultLeaderElectionPort
 		}
 		fmt.Fprintf(w, "server.%d=%s:%d:%d\n", srv.ID, srv.Host, srv.PeerPort, srv.LeaderElectionPort)
+	}
+
+	if testKrb5 {
+		fmt.Fprintln(w, "authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider")
+		fmt.Fprintln(w, "jaasLoginRenew=3600000")
 	}
 	return nil
 }
