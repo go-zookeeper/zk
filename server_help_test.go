@@ -17,19 +17,19 @@ import (
 const (
 	_testConfigName   = "zoo.cfg"
 	_testMyIDFileName = "myid"
-	_testJaasFileName = "jaas.conf"
-	_testKeytabName   = "test.keytab"
-	_testKrb5CfgName  = "krb5.conf"
 )
 
 var (
 	// test case in krb5 env
 	testKrb5  = false
 	kdcServer *krb5test.KDC
+
+	_testKrb5JaasPath   string
+	_testKrb5KeytabPath string
+	_testKrb5ConfigPath string
 )
 
-var jassdata = `
-Server {
+var jaasTemplateData = `Server {
 com.sun.security.auth.module.Krb5LoginModule required
 useKeyTab=true
 keyTab="%s"
@@ -108,7 +108,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 		for i := 0; i < size; i++ {
 			serverNConfig := ServerConfigServer{
 				ID:                 i + 1,
-				Host:               "127.0.0.1",
+				Host:               "localhost",
 				PeerPort:           startPort + i*3 + 1,
 				LeaderElectionPort: startPort + i*3 + 2,
 			}
@@ -131,16 +131,20 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 		requireNoError(t, err)
 
 		if testKrb5 {
-			krb5Cfg, _ := kdcServer.KRB5Conf.JSON()
-			keytab, _ := kdcServer.Keytab.Marshal()
-			krb5ConfigPath := filepath.Join(srvPath, _testKrb5CfgName)
-			krb5KeytabPath := filepath.Join(srvPath, _testKeytabName)
-			krb5JaasPath := filepath.Join(srvPath, _testJaasFileName)
-			err = ioutil.WriteFile(krb5ConfigPath, []byte(krb5Cfg), os.ModePerm)
+			_testKrb5ConfigPath = filepath.Join(srvPath, "krb5.config")
+			_testKrb5KeytabPath = filepath.Join(srvPath, "krb5.keytab")
+			_testKrb5JaasPath = filepath.Join(srvPath, "jaas.conf")
+
+			var krb5ConfigData, _ = kdcServer.KRB5Conf.JSON()
+			err = ioutil.WriteFile(_testKrb5ConfigPath, []byte(krb5ConfigData), os.ModePerm)
 			requireNoError(t, err)
-			err = ioutil.WriteFile(krb5KeytabPath, keytab, os.ModePerm)
+
+			var krb5KeytabData, _ = kdcServer.Keytab.Marshal()
+			err = ioutil.WriteFile(_testKrb5KeytabPath, krb5KeytabData, os.ModePerm)
 			requireNoError(t, err)
-			err = ioutil.WriteFile(krb5JaasPath, []byte(fmt.Sprintf(jassdata, krb5KeytabPath, krb5KeytabPath)), os.ModePerm)
+
+			var krb5JaasData = []byte(fmt.Sprintf(jaasTemplateData, _testKrb5KeytabPath, _testKrb5KeytabPath))
+			err = ioutil.WriteFile(_testKrb5JaasPath, krb5JaasData, os.ModePerm)
 			requireNoError(t, err)
 		}
 
@@ -185,6 +189,18 @@ func (tc *TestCluster) ConnectWithOptions(sessionTimeout time.Duration, options 
 	hosts := make([]string, len(tc.Servers))
 	for i, srv := range tc.Servers {
 		hosts[i] = fmt.Sprintf("127.0.0.1:%d", srv.Port)
+	}
+	if testKrb5 {
+		options = append(options, WithSASLConfig(&SASLConfig{
+			SASLType: KERBEROS,
+			KerberosConfig: &KerberosConfig{
+				KeytabPath:  _testKrb5KeytabPath,
+				KrbCfgPath:  _testKrb5ConfigPath,
+				Username:    "zookeeper",
+				Realm:       "TEST.COM",
+				ServiceName: "zookeeper",
+			},
+		}))
 	}
 	zk, ch, err := Connect(hosts, sessionTimeout, options...)
 	return zk, ch, err
