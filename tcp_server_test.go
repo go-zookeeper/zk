@@ -18,15 +18,12 @@ func WithListenServer(t *testing.T, test func(server string)) {
 	defer l.Close()
 
 	go func() {
-		for {
-			conn, err := l.Accept()
-			if err != nil {
-				fmt.Println("Failed to accept connection: ", err.Error())
-				continue
-			}
-
-			handleRequest(conn)
+		conn, err := l.Accept()
+		if err != nil {
+			t.Logf("Failed to accept connection: %s", err.Error())
 		}
+
+		handleRequest(conn)
 	}()
 
 	test(server)
