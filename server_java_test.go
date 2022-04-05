@@ -48,7 +48,12 @@ func NewIntegrationTestServer(t *testing.T, configPath string, stdout, stderr io
 		}
 	}
 	// password is 'test'
-	superString := `SERVER_JVMFLAGS=-Dzookeeper.DigestAuthenticationProvider.superDigest=super:D/InIHSb7yEEbrWz8b9l71RjZJU=`
+	superString := ""
+	if testKrb5 {
+		superString += fmt.Sprintf(`SERVER_JVMFLAGS=-Djava.security.auth.login.config=%s`, _testKrb5JaasPath)
+	} else {
+		superString += `SERVER_JVMFLAGS=-Dzookeeper.DigestAuthenticationProvider.superDigest=super:D/InIHSb7yEEbrWz8b9l71RjZJU=`
+	}
 	// enable TTL
 	superString += ` -Dzookeeper.extendedTypesEnabled=true -Dzookeeper.emulate353TTLNodes=true`
 
@@ -147,6 +152,11 @@ func (sc ServerConfig) Marshall(w io.Writer) error {
 			srv.LeaderElectionPort = DefaultLeaderElectionPort
 		}
 		fmt.Fprintf(w, "server.%d=%s:%d:%d\n", srv.ID, srv.Host, srv.PeerPort, srv.LeaderElectionPort)
+	}
+
+	if testKrb5 {
+		fmt.Fprintf(w, "authProvider.%d=org.apache.zookeeper.server.auth.SASLAuthenticationProvider\n", 1)
+		fmt.Fprintln(w, "jaasLoginRenew=3600000")
 	}
 	return nil
 }
