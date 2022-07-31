@@ -140,7 +140,7 @@ type statResponse struct {
 
 //
 
-type CheckVersionRequest PathVersionRequest
+type checkVersionRequest PathVersionRequest
 type closeRequest struct{}
 type closeResponse struct{}
 
@@ -159,14 +159,14 @@ type connectResponse struct {
 	Passwd          []byte
 }
 
-type CreateRequest struct {
+type createRequest struct {
 	Path  string
 	Data  []byte
 	Acl   []ACL
 	Flags int32
 }
 
-type CreateContainerRequest CreateRequest
+type createContainerRequest createRequest
 
 type CreateTTLRequest struct {
 	Path  string
@@ -177,7 +177,7 @@ type CreateTTLRequest struct {
 }
 
 type createResponse pathResponse
-type DeleteRequest PathVersionRequest
+type deleteRequest PathVersionRequest
 type deleteResponse struct{}
 
 type errorResponse struct {
@@ -281,6 +281,13 @@ type setWatches2Request struct {
 }
 
 type setWatches2Response struct{}
+
+type removeWatchesRequest struct {
+	Path string
+	Type WatcherType
+}
+
+type removeWatchesResponse struct{}
 
 type syncRequest pathRequest
 type syncResponse pathResponse
@@ -617,13 +624,13 @@ func requestStructForOp(op int32) interface{} {
 	case opClose:
 		return &closeRequest{}
 	case opCreate:
-		return &CreateRequest{}
+		return &createRequest{}
 	case opCreateContainer:
-		return &CreateContainerRequest{}
+		return &createContainerRequest{}
 	case opCreateTTL:
 		return &CreateTTLRequest{}
 	case opDelete:
-		return &DeleteRequest{}
+		return &deleteRequest{}
 	case opExists:
 		return &existsRequest{}
 	case opGetAcl:
@@ -651,7 +658,7 @@ func requestStructForOp(op int32) interface{} {
 	case opSetAuth:
 		return &setAuthRequest{}
 	case opCheck:
-		return &CheckVersionRequest{}
+		return &checkVersionRequest{}
 	case opMulti:
 		return &multiRequest{}
 	case opReconfig:

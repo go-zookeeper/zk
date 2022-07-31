@@ -14,9 +14,9 @@ func TestEncodeDecodePacket(t *testing.T) {
 	encodeDecodeTest(t, &getChildrenResponse{[]string{"foo", "bar"}})
 	encodeDecodeTest(t, &pathWatchRequest{"path", true})
 	encodeDecodeTest(t, &pathWatchRequest{"path", false})
-	encodeDecodeTest(t, &CheckVersionRequest{"/", -1})
+	encodeDecodeTest(t, &checkVersionRequest{"/", -1})
 	encodeDecodeTest(t, &reconfigRequest{nil, nil, nil, -1})
-	encodeDecodeTest(t, &multiRequest{Ops: []multiRequestOp{{multiHeader{opCheck, false, -1}, &CheckVersionRequest{"/", -1}}}})
+	encodeDecodeTest(t, &multiRequest{Ops: []multiRequestOp{{multiHeader{opCheck, false, -1}, &checkVersionRequest{"/", -1}}}})
 }
 
 func TestRequestStructForOp(t *testing.T) {

@@ -35,13 +35,13 @@ var ErrInvalidPath = errors.New("zk: invalid path")
 var DefaultLogger Logger = defaultLogger{}
 
 const (
-	bufferSize      = 1536 * 1024
-	eventChanSize   = 6
-	sendChanSize    = 16
-	protectedPrefix = "_c_"
+	bufferSize                       = 1536 * 1024
+	eventChanSize                    = 6
+	sendChanSize                     = 16
+	persistentWatchChanSize          = 8
+	persistentRecursiveWatchChanSize = 16
+	protectedPrefix                  = "_c_"
 )
-
-type watchType int
 
 const (
 	watchTypeData watchType = iota
@@ -50,6 +50,19 @@ const (
 	watchTypePersistent
 	watchTypePersistentRecursive
 )
+
+type watchType int
+
+func (wt watchType) WatcherType() WatcherType {
+	switch wt {
+	case watchTypeData:
+		return WatcherTypeData
+	case watchTypeChild:
+		return WatcherTypeChildren
+	default:
+		return WatcherTypeAny
+	}
+}
 
 type watchPathType struct {
 	path  string
@@ -556,8 +569,11 @@ func (c *Conn) notifyWatches(ev Event) {
 	case EventNodeDeleted:
 		wTypes = append(wTypes, watchTypeExist, watchTypeData, watchTypeChild)
 	}
+
 	c.watchersLock.Lock()
 	defer c.watchersLock.Unlock()
+
+	// Handle non-recursive watches.
 	for _, t := range wTypes {
 		wpt := watchPathType{ev.Path, t}
 		if watchers := c.watchers[wpt]; len(watchers) > 0 {
@@ -572,6 +588,8 @@ func (c *Conn) notifyWatches(ev Event) {
 			}
 		}
 	}
+
+	// Handle recursive watches.
 	for basePath, watchers := range c.recWatchers {
 		if strings.HasPrefix(ev.Path, basePath.path) {
 			for _, ch := range watchers {
@@ -924,17 +942,76 @@ func (c *Conn) nextXid() int32 {
 }
 
 func (c *Conn) addWatcher(path string, watchType watchType) <-chan Event {
+	// Determine appropriate channel buffer size based on watch type.
+	var chanSz int
+	switch watchType {
+	case watchTypePersistent:
+		chanSz = persistentWatchChanSize
+	case watchTypePersistentRecursive:
+		chanSz = persistentRecursiveWatchChanSize
+	default: // All other watchers only have a single event.
+		chanSz = 1
+	}
+
+	ch := make(chan Event, chanSz)
+	wpt := watchPathType{path, watchType}
+
 	c.watchersLock.Lock()
 	defer c.watchersLock.Unlock()
 
-	ch := make(chan Event, 1)
-	wpt := watchPathType{path, watchType}
 	if watchType == watchTypePersistentRecursive {
 		c.recWatchers[wpt] = append(c.recWatchers[wpt], ch)
 	} else {
 		c.watchers[wpt] = append(c.watchers[wpt], ch)
 	}
 	return ch
+}
+
+// removeWatcher will attempt to remove a watcher associated with the given event channel.
+// If the watcher is successfully removed, its watchPathType will be returned along
+// with the number of remaining watchers with the same watchPathType.
+func (c *Conn) removeWatcher(ech <-chan Event) (ok bool, wpt watchPathType, remaining int) {
+	c.watchersLock.Lock()
+	defer c.watchersLock.Unlock()
+
+	f := func(watchers map[watchPathType][]chan Event) bool {
+		var chs []chan Event
+		for wpt, chs = range watchers {
+			for i, ch := range chs {
+				if ch != ech {
+					continue
+				}
+				// Channel found; remove it.
+				chs = append(chs[:i], chs[i+1:]...)
+				remaining = len(chs)
+				if remaining == 0 {
+					// No more watchers remain for watchPathType.
+					delete(watchers, wpt)
+				} else {
+					watchers[wpt] = chs
+				}
+				// Close the watch.
+				ev := Event{Type: EventNotWatching, State: c.State(), Path: wpt.path, Err: nil}
+				ch <- ev
+				close(ch)
+				c.sendEvent(ev)
+				return true
+			}
+		}
+		return false // Channel not found.
+	}
+
+	if f(c.watchers) {
+		ok = true
+		return
+	}
+
+	if f(c.recWatchers) {
+		ok = true
+		return
+	}
+
+	return false, watchPathType{}, 0 // No watcher found for channel.
 }
 
 func (c *Conn) queueRequest(opcode int32, req interface{}, res interface{}, recvFunc func(*request, *responseHeader, error)) <-chan response {
@@ -1017,7 +1094,7 @@ func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	return nil
 }
 
-// AddWatch creates a persistent, recursive watch at the given path
+// AddWatch creates a persistent (optionally recursive) watch at the given path.
 func (c *Conn) AddWatch(path string, recursive bool) (<-chan Event, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, err
@@ -1033,13 +1110,34 @@ func (c *Conn) AddWatch(path string, recursive bool) (<-chan Event, error) {
 	res := &addWatchResponse{}
 	_, err := c.request(opAddWatch, &addWatchRequest{Path: path, Mode: mode}, res, func(req *request, res *responseHeader, err error) {
 		if err == nil {
-			ech = c.addWatcher(path, watchType(wt))
+			ech = c.addWatcher(path, wt)
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
 	return ech, err
+}
+
+// RemoveWatch removes a watch associated with the given channel.
+// Note: This method works for any type of watch, not just persistent ones.
+func (c *Conn) RemoveWatch(ech <-chan Event) error {
+	// Remove the watcher from the client, first.
+	ok, wpt, remaining := c.removeWatcher(ech)
+	if !ok {
+		return ErrNoWatcher
+	}
+
+	if remaining == 0 {
+		// No more watchers remain for the watchPathType, so we can remove the watch from the server.
+		res := &removeWatchesResponse{}
+		_, err := c.request(opRemoveWatches, &removeWatchesRequest{Path: wpt.path, Type: wpt.wType.WatcherType()}, res, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Children returns the children of a znode.
@@ -1132,7 +1230,7 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 	}
 
 	res := &createResponse{}
-	_, err := c.request(opCreate, &CreateRequest{path, data, acl, flags}, res, nil)
+	_, err := c.request(opCreate, &createRequest{path, data, acl, flags}, res, nil)
 	if err == ErrConnectionClosed {
 		return "", err
 	}
@@ -1149,7 +1247,7 @@ func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL)
 	}
 
 	res := &createResponse{}
-	_, err := c.request(opCreateContainer, &CreateContainerRequest{path, data, acl, flags}, res, nil)
+	_, err := c.request(opCreateContainer, &createContainerRequest{path, data, acl, flags}, res, nil)
 	return res.Path, err
 }
 
@@ -1222,7 +1320,7 @@ func (c *Conn) Delete(path string, version int32) error {
 		return err
 	}
 
-	_, err := c.request(opDelete, &DeleteRequest{path, version}, &deleteResponse{}, nil)
+	_, err := c.request(opDelete, &deleteRequest{path, version}, &deleteResponse{}, nil)
 	return err
 }
 
@@ -1323,8 +1421,8 @@ type MultiResponse struct {
 }
 
 // Multi executes multiple ZooKeeper operations or none of them. The provided
-// ops must be one of *CreateRequest, *DeleteRequest, *SetDataRequest, or
-// *CheckVersionRequest.
+// ops must be one of *createRequest, *deleteRequest, *SetDataRequest, or
+// *checkVersionRequest.
 func (c *Conn) Multi(ops ...interface{}) ([]MultiResponse, error) {
 	req := &multiRequest{
 		Ops:        make([]multiRequestOp, 0, len(ops)),
@@ -1333,13 +1431,13 @@ func (c *Conn) Multi(ops ...interface{}) ([]MultiResponse, error) {
 	for _, op := range ops {
 		var opCode int32
 		switch op.(type) {
-		case *CreateRequest:
+		case *createRequest:
 			opCode = opCreate
 		case *SetDataRequest:
 			opCode = opSetData
-		case *DeleteRequest:
+		case *deleteRequest:
 			opCode = opDelete
-		case *CheckVersionRequest:
+		case *checkVersionRequest:
 			opCode = opCheck
 		default:
 			return nil, fmt.Errorf("unknown operation type %T", op)

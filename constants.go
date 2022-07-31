@@ -27,6 +27,8 @@ const (
 	opCheck           = 13
 	opMulti           = 14
 	opReconfig        = 16
+	opCheckWatches    = 17
+	opRemoveWatches   = 18
 	opCreateContainer = 19
 	opCreateTTL       = 21
 	opClose           = -11
@@ -130,6 +132,30 @@ func (m AddWatchMode) String() string {
 	return "Unknown"
 }
 
+const (
+	WatcherTypeChildren WatcherType = 1
+	WatcherTypeData     WatcherType = 2
+	WatcherTypeAny      WatcherType = 3
+)
+
+var (
+	watcherTypeNames = map[WatcherType]string{
+		WatcherTypeChildren: "WatcherTypeChildren",
+		WatcherTypeData:     "WatcherTypeData",
+		WatcherTypeAny:      "WatcherTypeAny",
+	}
+)
+
+// WatcherType represents a type of watcher.
+type WatcherType int32
+
+func (m WatcherType) String() string {
+	if name := watcherTypeNames[m]; name != "" {
+		return name
+	}
+	return "Unknown"
+}
+
 // ErrCode is the error code defined by server. Refer to ZK documentations for more specifics.
 type ErrCode int32
 
@@ -153,6 +179,7 @@ var (
 	ErrSessionMoved            = errors.New("zk: session moved to another server, so operation is ignored")
 	ErrReconfigDisabled        = errors.New("attempts to perform a reconfiguration operation when reconfiguration feature is disabled")
 	ErrBadArguments            = errors.New("invalid arguments")
+	ErrNoWatcher               = errors.New("no watcher found for the given path")
 	// ErrInvalidCallback         = errors.New("zk: invalid callback specified")
 
 	errCodeToError = map[ErrCode]error{
@@ -173,6 +200,7 @@ var (
 		errSessionMoved:      ErrSessionMoved,
 		errZReconfigDisabled: ErrReconfigDisabled,
 		errBadArguments:      ErrBadArguments,
+		errNoWatcher:         ErrNoWatcher,
 	}
 )
 
@@ -210,6 +238,7 @@ const (
 	errClosing                 ErrCode = -116
 	errNothing                 ErrCode = -117
 	errSessionMoved            ErrCode = -118
+	errNoWatcher               ErrCode = -122
 	// Attempts to perform a reconfiguration operation when reconfiguration feature is disabled
 	errZReconfigDisabled ErrCode = -123
 )
@@ -250,6 +279,8 @@ var (
 		opSetWatches:      "setWatches",
 		opSetWatches2:     "setWatches2",
 		opAddWatch:        "addWatch",
+		opRemoveWatches:   "removeWatches",
+		opCheckWatches:    "checkWatches", // for future use
 
 		opWatcherEvent: "watcherEvent",
 	}
