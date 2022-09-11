@@ -74,7 +74,7 @@ func (l *Lock) LockWithData(data []byte) error {
 				if err != nil {
 					return err
 				}
-				if exists == true {
+				if exists {
 					continue
 				}
 				_, err = l.c.Create(pth, []byte{}, 0, l.acl)

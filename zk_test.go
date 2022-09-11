@@ -205,7 +205,7 @@ func TestIncrementalReconfig(t *testing.T) {
 
 	startPort := int(rand.Int31n(6000) + 10000)
 
-	srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv4"))
+	srvPath := filepath.Join(tmpPath, "srv4")
 	if err := os.Mkdir(srvPath, 0700); err != nil {
 		requireNoError(t, err, "failed to make server path")
 	}
@@ -696,7 +696,7 @@ func TestChildWatch(t *testing.T) {
 		if ev.Path != "/" {
 			t.Fatalf("Child watcher wrong path %s instead of %s", ev.Path, "/")
 		}
-	case _ = <-time.After(time.Second * 2):
+	case <-time.After(time.Second * 2):
 		t.Fatal("Child watcher timed out")
 	}
 
@@ -723,7 +723,7 @@ func TestChildWatch(t *testing.T) {
 		if ev.Path != "/gozk-test" {
 			t.Fatalf("Child watcher wrong path %s instead of %s", ev.Path, "/")
 		}
-	case _ = <-time.After(time.Second * 2):
+	case <-time.After(time.Second * 2):
 		t.Fatal("Child watcher timed out")
 	}
 }
