@@ -34,6 +34,32 @@ type TestCluster struct {
 	Servers []TestServer
 }
 
+// WithTestCluster starts up a test cluster, runs the given function, and then stops the cluster.
+func WithTestCluster(t *testing.T, size int, stdout, stderr io.Writer, do func(t *testing.T, ts *TestCluster)) {
+	t.Helper()
+
+	ts, err := StartTestCluster(t, size, stdout, stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Stop()
+
+	do(t, ts)
+}
+
+// WithConnectAll connects to a test cluster, runs the given function, and then closes the connection.
+func WithConnectAll(t *testing.T, ts *TestCluster, do func(t *testing.T, c *Conn, ech <-chan Event)) {
+	t.Helper()
+
+	c, ech, err := ts.ConnectAll()
+	if err != nil {
+		t.Fatalf("Connect returned error: %+v", err)
+	}
+	defer c.Close()
+
+	do(t, c, ech)
+}
+
 // TODO: pull this into its own package to allow for better isolation of integration tests vs. unit
 // testing. This should be used on CI systems and local only when needed whereas unit tests should remain
 // fast and not rely on external dependencies.
