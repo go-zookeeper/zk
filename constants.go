@@ -42,24 +42,31 @@ const (
 
 const (
 	// EventNodeCreated represents a node is created.
-	EventNodeCreated         EventType = 1
-	EventNodeDeleted         EventType = 2
-	EventNodeDataChanged     EventType = 3
-	EventNodeChildrenChanged EventType = 4
+	EventNodeCreated            EventType = 1
+	EventNodeDeleted            EventType = 2
+	EventNodeDataChanged        EventType = 3
+	EventNodeChildrenChanged    EventType = 4
+	EventDataWatchRemoved       EventType = 5
+	EventChildWatchRemoved      EventType = 6
+	EventPersistentWatchRemoved EventType = 7
 
-	// EventSession represents a session event.
-	EventSession     EventType = -1
-	EventNotWatching EventType = -2
+	EventSession      EventType = -1 // EventSession represents a session event.
+	EventNotWatching  EventType = -2 // EventSession represents a session event.
+	EventWatchStalled EventType = -3 // EventWatchStalled represents a watch is stalled.
 )
 
 var (
 	eventNames = map[EventType]string{
-		EventNodeCreated:         "EventNodeCreated",
-		EventNodeDeleted:         "EventNodeDeleted",
-		EventNodeDataChanged:     "EventNodeDataChanged",
-		EventNodeChildrenChanged: "EventNodeChildrenChanged",
-		EventSession:             "EventSession",
-		EventNotWatching:         "EventNotWatching",
+		EventNodeCreated:            "EventNodeCreated",
+		EventNodeDeleted:            "EventNodeDeleted",
+		EventNodeDataChanged:        "EventNodeDataChanged",
+		EventNodeChildrenChanged:    "EventNodeChildrenChanged",
+		EventDataWatchRemoved:       "EventDataWatchRemoved",
+		EventChildWatchRemoved:      "EventChildWatchRemoved",
+		EventPersistentWatchRemoved: "EventPersistentWatchRemoved",
+		EventSession:                "EventSession",
+		EventNotWatching:            "EventNotWatching",
+		EventWatchStalled:           "EventWatchStalled",
 	}
 )
 
@@ -77,13 +84,6 @@ const (
 	StateHasSession = State(101)
 )
 
-const (
-	// FlagEphemeral means the node is ephemeral.
-	FlagEphemeral = 1
-	FlagSequence  = 2
-	FlagTTL       = 4
-)
-
 var (
 	stateNames = map[State]string{
 		StateUnknown:           "StateUnknown",
@@ -98,62 +98,56 @@ var (
 	}
 )
 
-// State is the session state.
-type State int32
-
-// String converts State to a readable string.
-func (s State) String() string {
-	if name := stateNames[s]; name != "" {
-		return name
-	}
-	return "Unknown"
-}
+const (
+	// FlagEphemeral means the node is ephemeral.
+	FlagEphemeral = 1
+	FlagSequence  = 2
+	FlagTTL       = 4
+)
 
 const (
-	WatchModePersistent          AddWatchMode = 0
-	WatchModePersistentRecursive AddWatchMode = 1
+	addWatchModePersistent          addWatchMode = 0
+	addWatchModePersistentRecursive addWatchMode = 1
 )
 
 var (
-	addWatchModeNames = map[AddWatchMode]string{
-		WatchModePersistent:          "WatchModePersistent",
-		WatchModePersistentRecursive: "WatchModePersistentRecursive",
+	addWatchModeNames = map[addWatchMode]string{
+		addWatchModePersistent:          "addWatchModePersistent",
+		addWatchModePersistentRecursive: "addWatchModePersistentRecursive",
 	}
 )
 
-// AddWatchMode defines the mode used to create a persistent watch
-type AddWatchMode int32
-
-func (m AddWatchMode) String() string {
-	if name := addWatchModeNames[m]; name != "" {
-		return name
-	}
-	return "Unknown"
-}
-
 const (
-	WatcherTypeChildren WatcherType = 1
-	WatcherTypeData     WatcherType = 2
-	WatcherTypeAny      WatcherType = 3
+	removeWatchTypeChildren   removeWatchType = 1
+	removeWatchTypeData       removeWatchType = 2
+	removeWatchTypePersistent removeWatchType = 3
 )
 
 var (
-	watcherTypeNames = map[WatcherType]string{
-		WatcherTypeChildren: "WatcherTypeChildren",
-		WatcherTypeData:     "WatcherTypeData",
-		WatcherTypeAny:      "WatcherTypeAny",
+	removeWatchTypeNames = map[removeWatchType]string{
+		removeWatchTypeChildren:   "removeWatchTypeChildren",
+		removeWatchTypeData:       "removeWatchTypeData",
+		removeWatchTypePersistent: "removeWatchTypePersistent",
 	}
 )
 
-// WatcherType represents a type of watcher.
-type WatcherType int32
+const (
+	watcherKindData watcherKind = iota
+	watcherKindExist
+	watcherKindChildren
+	watcherKindPersistent
+	watcherKindPersistentRecursive
+)
 
-func (m WatcherType) String() string {
-	if name := watcherTypeNames[m]; name != "" {
-		return name
+var (
+	watcherKindNames = map[watcherKind]string{
+		watcherKindData:                "watcherKindData",
+		watcherKindExist:               "watcherKindExist",
+		watcherKindChildren:            "watcherKindChildren",
+		watcherKindPersistent:          "watcherKindPersistent",
+		watcherKindPersistentRecursive: "watcherKindPersistentRecursive",
 	}
-	return "Unknown"
-}
+)
 
 // ErrCode is the error code defined by server. Refer to ZK documentations for more specifics.
 type ErrCode int32
@@ -318,3 +312,80 @@ var (
 		ModeStandalone: "standalone",
 	}
 )
+
+// State is the session state.
+type State int32
+
+// String converts State to a readable string.
+func (s State) String() string {
+	if name := stateNames[s]; name != "" {
+		return name
+	}
+	return "Unknown"
+}
+
+// addWatchMode defines the mode used to create a persistent watch
+type addWatchMode int32
+
+func (m addWatchMode) String() string {
+	if name := addWatchModeNames[m]; name != "" {
+		return name
+	}
+	return "Unknown"
+}
+
+// removeWatchType represents a type of watch known to the server.
+type removeWatchType int32
+
+func (m removeWatchType) String() string {
+	if name := removeWatchTypeNames[m]; name != "" {
+		return name
+	}
+	return "Unknown"
+}
+
+// watcherKind represents the kind of watcher known to the client.
+// Combines a watch type and watch mode.
+type watcherKind int
+
+func (wk watcherKind) String() string {
+	if name := watcherKindNames[wk]; name != "" {
+		return name
+	}
+	return "Unknown"
+}
+
+func (wk watcherKind) isPersistent() bool {
+	switch wk {
+	case watcherKindPersistent, watcherKindPersistentRecursive:
+		return true
+	}
+	return false
+}
+
+func (wk watcherKind) isRecursive() bool {
+	switch wk {
+	case watcherKindPersistentRecursive:
+		return true
+	}
+	return false
+}
+
+func (wk watcherKind) handlesEventType(eventType EventType) bool {
+	if wk.isPersistent() {
+		return true // Persistent watchers handle all event types.
+	}
+
+	switch eventType {
+	case EventNodeCreated:
+		return wk == watcherKindExist
+	case EventNodeDeleted:
+		return wk == watcherKindExist || wk == watcherKindData || wk == watcherKindChildren
+	case EventNodeDataChanged:
+		return wk == watcherKindExist || wk == watcherKindData
+	case EventNodeChildrenChanged:
+		return wk == watcherKindChildren
+	}
+
+	return false
+}

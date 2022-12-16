@@ -3,6 +3,7 @@ package zk
 import (
 	"context"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -385,8 +386,7 @@ func TestTreeCache_WatchesNodeCreate(t *testing.T) {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
 			}
 
-			cache := NewTreeCache(c, "/test-tree-cache",
-				TreeCacheIncludeData(true))
+			cache := NewTreeCache(c, "/test-tree-cache", TreeCacheIncludeData(true))
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
 
@@ -447,8 +447,7 @@ func TestTreeCache_WatchesNodeUpdate(t *testing.T) {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child1", err)
 			}
 
-			cache := NewTreeCache(c, "/test-tree-cache",
-				TreeCacheIncludeData(true))
+			cache := NewTreeCache(c, "/test-tree-cache", TreeCacheIncludeData(true))
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
 
@@ -500,8 +499,7 @@ func TestTreeCache_WatchesNodeDelete(t *testing.T) {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child1", err)
 			}
 
-			cache := NewTreeCache(c, "/test-tree-cache",
-				TreeCacheIncludeData(true))
+			cache := NewTreeCache(c, "/test-tree-cache", TreeCacheIncludeData(true))
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
 
@@ -528,6 +526,77 @@ func TestTreeCache_WatchesNodeDelete(t *testing.T) {
 			}
 			if ok {
 				t.Fatalf("cache node /child1 should not exist")
+			}
+
+			cancel()
+			if err := <-syncErrCh; err != context.Canceled {
+				t.Fatalf("expected context.Canceled, got %v", err)
+			}
+		})
+	})
+}
+
+func TestTreeCache_RecoversFromDisconnect(t *testing.T) {
+	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
+		WithConnectAll(t, tc, func(t *testing.T, c1 *Conn, _ <-chan Event) {
+			c1.reconnectLatch = make(chan struct{})
+
+			_, err := c1.Create("/test-tree-cache", nil, 0, WorldACL(PermAll))
+			if err != nil {
+				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
+			}
+
+			cache := NewTreeCache(c1, "/test-tree-cache", TreeCacheIncludeData(true))
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+
+			syncErrCh := make(chan error, 1)
+
+			// Start syncing cache in the background.
+			go func() {
+				defer close(syncErrCh)
+				syncErrCh <- cache.Sync(ctx)
+			}()
+
+			// Wait for the first full sync to complete.
+			err = cache.WaitForInitialSync(ctx)
+			if err != nil {
+				t.Fatalf("initial cache sync failed: %v", err)
+			}
+
+			// Simulate network error by brutally closing the network connection.
+			//_ = c1.conn.Close()
+			// Reconnection will be blocked by the latch.
+
+			// While c1 is disconnected, create a bunch of nodes on a new connection.
+			// This will cause the cache to miss some events, but hopefully it will catch up on session reestablishment.
+			WithConnectAll(t, tc, func(t *testing.T, c2 *Conn, _ <-chan Event) {
+				for i := 0; i < 100; i++ {
+					_, err := c2.Create("/test-tree-cache/child-"+strconv.Itoa(i), []byte("foo"), 0, WorldACL(PermAll))
+					if err != nil {
+						t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child-"+strconv.Itoa(i), err)
+					}
+				}
+			})
+
+			close(c1.reconnectLatch) // Unblock reconnection.
+
+			// Wait for the session to be reestablished and the cache to catch up.
+			err = waitForSession(context.Background(), c1.eventChan)
+			if err != nil {
+				t.Fatalf("failed to wait for session: %v", err)
+			}
+			time.Sleep(time.Millisecond * 500)
+
+			// Check that all nodes are present in the cache.
+			for i := 0; i < 100; i++ {
+				ok, _, err := cache.Exists("/child-" + strconv.Itoa(i))
+				if err != nil {
+					t.Fatalf("failed to get cache node /child-%d: %v", i, err)
+				}
+				if !ok {
+					t.Fatalf("cache node //child-%d should exist", i)
+				}
 			}
 
 			cancel()

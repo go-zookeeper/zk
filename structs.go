@@ -237,7 +237,7 @@ type setAclResponse statResponse // nolint: revive, stylecheck
 
 type addWatchRequest struct {
 	Path string
-	Mode AddWatchMode
+	Mode addWatchMode
 }
 
 type addWatchResponse struct{}
@@ -284,9 +284,9 @@ type setWatches2Request struct {
 
 type setWatches2Response struct{}
 
-type RemoveWatchesRequest struct {
+type removeWatchesRequest struct {
 	Path string
-	Type WatcherType
+	Type removeWatchType
 }
 
 type removeWatchesResponse struct{}
@@ -656,7 +656,7 @@ func requestStructForOp(op int32) interface{} {
 	case opAddWatch:
 		return &addWatchRequest{}
 	case opRemoveWatches:
-		return &RemoveWatchesRequest{}
+		return &removeWatchesRequest{}
 	case opSync:
 		return &syncRequest{}
 	case opSetAuth:

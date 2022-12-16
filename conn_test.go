@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -113,82 +114,121 @@ func TestDeadlockInClose(t *testing.T) {
 
 func TestNotifyWatches(t *testing.T) {
 	cases := []struct {
-		eType   EventType
-		path    string
-		watches map[watchPathType]bool
+		eType    EventType
+		path     string
+		expected map[watcherKey]bool
 	}{
 		{
 			EventNodeCreated, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: true,
-				{"/", watchTypeChild}: false,
-				{"/", watchTypeData}:  false,
+			map[watcherKey]bool{
+				{"/", watcherKindExist}:               true,
+				{"/", watcherKindChildren}:            false,
+				{"/", watcherKindData}:                false,
+				{"/", watcherKindPersistent}:          true,
+				{"/", watcherKindPersistentRecursive}: true,
 			},
 		},
 		{
 			EventNodeCreated, "/a",
-			map[watchPathType]bool{
-				{"/b", watchTypeExist}: false,
+			map[watcherKey]bool{
+				{"/", watcherKindExist}:               false,
+				{"/", watcherKindChildren}:            false,
+				{"/", watcherKindData}:                false,
+				{"/", watcherKindPersistent}:          false,
+				{"/", watcherKindPersistentRecursive}: true,
+			},
+		},
+		{
+			EventNodeCreated, "/a",
+			map[watcherKey]bool{
+				{"/b", watcherKindExist}:               false,
+				{"/b", watcherKindChildren}:            false,
+				{"/b", watcherKindData}:                false,
+				{"/b", watcherKindPersistent}:          false,
+				{"/b", watcherKindPersistentRecursive}: false,
 			},
 		},
 		{
 			EventNodeDataChanged, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: true,
-				{"/", watchTypeData}:  true,
-				{"/", watchTypeChild}: false,
+			map[watcherKey]bool{
+				{"/", watcherKindExist}:               true,
+				{"/", watcherKindData}:                true,
+				{"/", watcherKindChildren}:            false,
+				{"/", watcherKindPersistent}:          true,
+				{"/", watcherKindPersistentRecursive}: true,
 			},
 		},
 		{
 			EventNodeChildrenChanged, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: false,
-				{"/", watchTypeData}:  false,
-				{"/", watchTypeChild}: true,
+			map[watcherKey]bool{
+				{"/", watcherKindExist}:               false,
+				{"/", watcherKindData}:                false,
+				{"/", watcherKindChildren}:            true,
+				{"/", watcherKindPersistent}:          true,
+				{"/", watcherKindPersistentRecursive}: true,
 			},
 		},
 		{
 			EventNodeDeleted, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: true,
-				{"/", watchTypeData}:  true,
-				{"/", watchTypeChild}: true,
+			map[watcherKey]bool{
+				{"/", watcherKindExist}:               true,
+				{"/", watcherKindData}:                true,
+				{"/", watcherKindChildren}:            true,
+				{"/", watcherKindPersistent}:          true,
+				{"/", watcherKindPersistentRecursive}: true,
 			},
 		},
 	}
 
-	conn := &Conn{watchers: make(map[watchPathType][]chan Event)}
+	conn := &Conn{
+		watchersByKey: make(map[watcherKey][]watcher),
+	}
 
-	for idx, c := range cases {
-		t.Run(fmt.Sprintf("#%d %s", idx, c.eType), func(t *testing.T) {
+	for i, c := range cases {
+		t.Run(fmt.Sprintf("#%d %s", i, c.eType), func(t *testing.T) {
 			c := c
 
 			notifications := make([]struct {
-				path   string
-				notify bool
-				ch     <-chan Event
-			}, len(c.watches))
+				path string
+				kind watcherKind
+				want bool
+				ch   <-chan Event
+			}, len(c.expected))
 
 			var idx int
-			for wpt, expectEvent := range c.watches {
-				ch := conn.addWatcher(wpt.path, wpt.wType)
-				notifications[idx].path = wpt.path
-				notifications[idx].notify = expectEvent
+			for key, want := range c.expected {
+				ch := conn.addWatcher(key.path, key.kind)
+				notifications[idx].path = key.path
+				notifications[idx].kind = key.kind
+				notifications[idx].want = want
 				notifications[idx].ch = ch
 				idx++
 			}
 			ev := Event{Type: c.eType, Path: c.path}
-			conn.notifyWatches(ev)
+			conn.notifyWatchers(ev)
 
-			for _, res := range notifications {
+			// Wait for all notifications to be received.
+			time.Sleep(100 * time.Millisecond)
+
+			for _, n := range notifications {
 				select {
-				case e := <-res.ch:
-					if !res.notify || e.Path != res.path {
-						t.Fatal("unexpeted notification received")
+				case e := <-n.ch:
+					if !n.want {
+						// We did not expect an event, but got one.
+						t.Fatal("unexpected notification received", e.Path, e.Type, n.kind)
+					} else if n.kind.isRecursive() {
+						// Special case for recursive watchers - paths match by prefix.
+						if !strings.HasPrefix(e.Path, n.path) {
+							// We expected an event, but the path has an unexpected prefix.
+							t.Fatal("notification received with unexpected path", e.Path, e.Type, n.kind)
+						}
+					} else if e.Path != n.path {
+						// We expected an event, but the path does not match the expected one.
+						t.Fatal("notification received with unexpected path", e.Path, e.Type, n.kind)
 					}
 				default:
-					if res.notify {
-						t.Fatal("expected notification not received")
+					if n.want {
+						t.Fatal("expected notification not received", n.path, n.kind)
 					}
 				}
 			}

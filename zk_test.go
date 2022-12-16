@@ -633,12 +633,14 @@ func TestChildWatch(t *testing.T) {
 				t.Fatal("Children should return at least 1 child")
 			}
 
+			// Creating a child should trigger EventNodeChildrenChanged.
 			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
 				t.Fatalf("Create returned error: %+v", err)
 			} else if path != "/gozk-test" {
 				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
 			}
 
+			// Verify childCh yields EventNodeChildrenChanged
 			select {
 			case ev := <-childCh:
 				if ev.Type != EventNodeChildrenChanged {
@@ -653,8 +655,15 @@ func TestChildWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Child watcher timed out")
 			}
-
-			// Delete of the watched node should trigger the watch
+			// Verify childCh is closed.
+			select {
+			case _, ok := <-childCh:
+				if ok {
+					t.Fatal("Child watcher channel should be closed")
+				}
+			default:
+				t.Fatal("Child watcher channel should be closed")
+			}
 
 			children, stat, childCh, err = c.ChildrenW("/gozk-test")
 			if err != nil {
@@ -665,10 +674,12 @@ func TestChildWatch(t *testing.T) {
 				t.Fatal("Children should return 0 children")
 			}
 
+			// Delete of the watched node should trigger EventNodeDeleted
 			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
 				t.Fatalf("Delete returned error: %+v", err)
 			}
 
+			// Verify childCh yields EventNodeDeleted.
 			select {
 			case ev := <-childCh:
 				if ev.Type != EventNodeDeleted {
@@ -683,6 +694,15 @@ func TestChildWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Child watcher timed out")
 			}
+			// Verify childCh is closed.
+			select {
+			case _, ok := <-childCh:
+				if ok {
+					t.Fatal("Child watcher channel should be closed")
+				}
+			default:
+				t.Fatal("Child watcher channel should be closed")
+			}
 		})
 	})
 }
@@ -692,10 +712,6 @@ func TestRemoveChildWatch(t *testing.T) {
 
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
-			}
-
 			children, stat, childCh, err := c.ChildrenW("/")
 			if err != nil {
 				t.Fatalf("Children returned error: %+v", err)
@@ -710,6 +726,7 @@ func TestRemoveChildWatch(t *testing.T) {
 				t.Fatalf("RemoveWatch returned error: %+v", err)
 			}
 
+			// Verify childCh yields EventNotWatching
 			select {
 			case ev := <-childCh:
 				if ev.Type != EventNotWatching {
@@ -724,24 +741,14 @@ func TestRemoveChildWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Child watcher timed out")
 			}
-
-			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
-				t.Fatalf("Create returned error: %+v", err)
-			} else if path != "/gozk-test" {
-				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
-			}
-
+			// Verify childCh is closed.
 			select {
 			case _, ok := <-childCh:
 				if ok {
-					t.Fatalf("Child watcher should have been closed")
+					t.Fatal("Child watcher channel should be closed")
 				}
-			case <-time.After(time.Second * 2):
-				t.Fatal("Child watcher timed out")
-			}
-
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
+			default:
+				t.Fatal("Child watcher channel should be closed")
 			}
 		})
 	})
@@ -765,12 +772,14 @@ func TestExistsWatch(t *testing.T) {
 				t.Fatal("Exists returned true")
 			}
 
+			// Create of the watched node should trigger EventNodeCreated
 			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
 				t.Fatalf("Create returned error: %+v", err)
 			} else if path != "/gozk-test" {
 				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
 			}
 
+			// Verify existsCh yields EventNodeCreated.
 			select {
 			case ev := <-existsCh:
 				if ev.Type != EventNodeCreated {
@@ -785,8 +794,15 @@ func TestExistsWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Exists watcher timed out")
 			}
-
-			// Delete of the watched node should trigger the watch
+			// Verify existsCh is closed.
+			select {
+			case _, ok := <-existsCh:
+				if ok {
+					t.Fatal("Exists watcher channel should be closed")
+				}
+			default:
+				t.Fatal("Exists watcher channel should be closed")
+			}
 
 			exists, stat, existsCh, err = c.ExistsW("/gozk-test")
 			if err != nil {
@@ -797,10 +813,12 @@ func TestExistsWatch(t *testing.T) {
 				t.Fatal("Exists should return true")
 			}
 
+			// Delete of the watched node should trigger EventNodeDeleted.
 			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
 				t.Fatalf("Delete returned error: %+v", err)
 			}
 
+			// Verify existsCh yields EventNodeDeleted.
 			select {
 			case ev := <-existsCh:
 				if ev.Type != EventNodeDeleted {
@@ -815,6 +833,15 @@ func TestExistsWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Exists watcher timed out")
 			}
+			// Verify existsCh is closed.
+			select {
+			case _, ok := <-existsCh:
+				if ok {
+					t.Fatal("Exists watcher channel should be closed")
+				}
+			default:
+				t.Fatal("Exists watcher channel should be closed")
+			}
 		})
 	})
 }
@@ -824,10 +851,6 @@ func TestRemoveExistsWatch(t *testing.T) {
 
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
-			}
-
 			exists, _, existsCh, err := c.ExistsW("/gozk-test")
 			if err != nil {
 				t.Fatalf("Exists returned error: %+v", err)
@@ -840,6 +863,7 @@ func TestRemoveExistsWatch(t *testing.T) {
 				t.Fatalf("RemoveWatch returned error: %+v", err)
 			}
 
+			// Verify existsCh yields EventNotWatching.
 			select {
 			case ev := <-existsCh:
 				if ev.Type != EventNotWatching {
@@ -854,24 +878,14 @@ func TestRemoveExistsWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Exists watcher timed out")
 			}
-
-			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
-				t.Fatalf("Create returned error: %+v", err)
-			} else if path != "/gozk-test" {
-				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
-			}
-
+			// Verify existsCh is closed.
 			select {
 			case _, ok := <-existsCh:
 				if ok {
-					t.Fatalf("Exists watcher should have been closed")
+					t.Fatal("Exists watcher channel should be closed")
 				}
-			case <-time.After(time.Second * 2):
-				t.Fatal("Exists watcher timed out")
-			}
-
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
+			default:
+				t.Fatal("Exists watcher channel should be closed")
 			}
 		})
 	})
@@ -891,12 +905,14 @@ func TestAddPersistentWatch(t *testing.T) {
 				t.Fatalf("AddWatch returned error: %+v", err)
 			}
 
+			// Creating child node should trigger EventNodeChildrenChanged.
 			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
 				t.Fatalf("Create returned error: %+v", err)
 			} else if path != "/gozk-test" {
 				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
 			}
 
+			// Verify watchCh yields EventNodeChildrenChanged.
 			select {
 			case ev := <-watchCh:
 				if ev.Type != EventNodeChildrenChanged {
@@ -912,12 +928,12 @@ func TestAddPersistentWatch(t *testing.T) {
 				t.Fatal("Watcher timed out")
 			}
 
-			// Delete of the watched node should trigger the watch
-
+			// Delete of child node should trigger EventNodeChildrenChanged
 			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
 				t.Fatalf("Delete returned error: %+v", err)
 			}
 
+			// Verify watchCh yields EventNodeChildrenChanged.
 			select {
 			case ev := <-watchCh:
 				if ev.Type != EventNodeChildrenChanged {
@@ -941,10 +957,6 @@ func TestRemovePersistentWatch(t *testing.T) {
 
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
-			}
-
 			watchCh, err := c.AddWatch("/", false)
 			if err != nil {
 				t.Fatalf("AddWatch returned error: %+v", err)
@@ -955,6 +967,7 @@ func TestRemovePersistentWatch(t *testing.T) {
 				t.Fatalf("RemoveWatch returned error: %+v", err)
 			}
 
+			// Verify watchCh yields EventNotWatching.
 			select {
 			case ev := <-watchCh:
 				if ev.Type != EventNotWatching {
@@ -969,24 +982,14 @@ func TestRemovePersistentWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Child watcher timed out")
 			}
-
-			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
-				t.Fatalf("Create returned error: %+v", err)
-			} else if path != "/gozk-test" {
-				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
-			}
-
+			// Verify watchCh is closed.
 			select {
 			case _, ok := <-watchCh:
 				if ok {
-					t.Fatalf("Watcher should have been closed")
+					t.Fatal("Watcher channel should be closed")
 				}
-			case <-time.After(time.Second * 2):
-				t.Fatal("Watcher timed out")
-			}
-
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
+			default:
+				t.Fatal("Watcher channel should be closed")
 			}
 		})
 	})
@@ -1006,12 +1009,14 @@ func TestAddPersistentRecursiveWatch(t *testing.T) {
 				t.Fatalf("AddWatch returned error: %+v", err)
 			}
 
+			// Creating child node should trigger EventNodeCreated.
 			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
 				t.Fatalf("Create returned error: %+v", err)
 			} else if path != "/gozk-test" {
 				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
 			}
 
+			// Verify watchCh yields EventNodeCreated.
 			select {
 			case ev := <-watchCh:
 				if ev.Type != EventNodeCreated {
@@ -1027,12 +1032,12 @@ func TestAddPersistentRecursiveWatch(t *testing.T) {
 				t.Fatal("Watcher timed out")
 			}
 
-			// Delete of the watched node should trigger the watch
-
+			// Delete of the child node should trigger EventNodeDeleted.
 			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
 				t.Fatalf("Delete returned error: %+v", err)
 			}
 
+			// Verify watchCh yields EventNodeDeleted.
 			select {
 			case ev := <-watchCh:
 				if ev.Type != EventNodeDeleted {
@@ -1056,10 +1061,6 @@ func TestRemovePersistentRecursiveWatch(t *testing.T) {
 
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
-			}
-
 			watchCh, err := c.AddWatch("/", true)
 			if err != nil {
 				t.Fatalf("AddWatch returned error: %+v", err)
@@ -1070,6 +1071,7 @@ func TestRemovePersistentRecursiveWatch(t *testing.T) {
 				t.Fatalf("RemoveWatch returned error: %+v", err)
 			}
 
+			// Verify watchCh yields EventNotWatching.
 			select {
 			case ev := <-watchCh:
 				if ev.Type != EventNotWatching {
@@ -1084,24 +1086,81 @@ func TestRemovePersistentRecursiveWatch(t *testing.T) {
 			case <-time.After(time.Second * 2):
 				t.Fatal("Child watcher timed out")
 			}
-
-			if path, err := c.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
-				t.Fatalf("Create returned error: %+v", err)
-			} else if path != "/gozk-test" {
-				t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
-			}
-
+			// Verify watchCh is closed.
 			select {
 			case _, ok := <-watchCh:
 				if ok {
-					t.Fatalf("Watcher should have been closed")
+					t.Fatal("Watcher channel should be closed")
 				}
-			case <-time.After(time.Second * 2):
-				t.Fatal("Watcher timed out")
+			default:
+				t.Fatal("Watcher channel should be closed")
+			}
+		})
+	})
+}
+
+// This test works hard to abuse a watcher into stalling.
+// It does this by generating lots of events but never consuming them.
+// The client does its best to discard the watch.
+func TestPersistentWatchStall(t *testing.T) {
+	t.Parallel()
+
+	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
+		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
+			stallLatch := make(chan struct{})
+
+			go func() {
+				for e := range c.eventChan {
+					if e.Type == EventWatchStalled {
+						t.Log("Watcher stalled")
+						close(stallLatch)
+						break
+					}
+				}
+			}()
+
+			watchCh, err := c.AddWatch("/", true)
+			if err != nil {
+				t.Fatalf("AddWatch returned error: %+v", err)
 			}
 
-			if err := c.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
-				t.Fatalf("Delete returned error: %+v", err)
+			// Create lots of paths to generate events, but with no consumer of watch events.
+			// This should cause the watcher to stall.
+		nodeLoop:
+			for i := 0; i < 3000; i++ {
+				path, err := c.Create(fmt.Sprintf("/gozk-test-%d", i), []byte{}, 0, WorldACL(PermAll))
+				if err != nil {
+					t.Fatalf("Create returned: %+v", err)
+				}
+				err = c.Delete(path, -1)
+				if err != nil {
+					t.Fatalf("Delete returned: %+v", err)
+				}
+
+				select {
+				case <-stallLatch:
+					break nodeLoop // We can break early if we get the stall event.
+				default:
+				}
+			}
+
+			// Verify we saw the stall event.
+			select {
+			case <-stallLatch:
+			case <-time.After(time.Second * 5):
+				t.Fatal("Watcher did not stall")
+			}
+
+			// Verify that the watch channel gets closed.
+			for {
+				select {
+				case _, ok := <-watchCh:
+					if !ok {
+						return // Saw the channel close.
+					}
+				case <-time.After(time.Second * 5):
+					t.Fatal("Expected to see the event channel close")
+				}
 			}
 		})
 	})
@@ -1119,9 +1178,15 @@ func TestSetWatchers(t *testing.T) {
 
 		c1.reconnectLatch = make(chan struct{})
 		c1.setWatchLimit = 512 // break up set-watch step into 512-byte requests
+
+		// Capture setWatches2Request.
 		var setWatchReqs atomic.Value
 		c1.setWatchCallback = func(reqs []*setWatches2Request) {
-			setWatchReqs.Store(reqs)
+			if prev := setWatchReqs.Load(); prev != nil {
+				setWatchReqs.Store(append(prev.([]*setWatches2Request), reqs...))
+			} else {
+				setWatchReqs.Store(reqs)
+			}
 		}
 
 		c2, _, err := tc.ConnectAll()
@@ -1130,10 +1195,9 @@ func TestSetWatchers(t *testing.T) {
 		}
 		defer c2.Close()
 
-		if err := c1.Delete("/gozk-test", -1); err != nil && err != ErrNoNode {
+		if err := c1.Delete("/gozk-test-x", -1); err != nil && err != ErrNoNode {
 			t.Fatalf("Delete returned error: %+v", err)
 		}
-
 		testPaths := map[string]<-chan Event{}
 		defer func() {
 			// clean up all of the test paths we create
@@ -1142,8 +1206,10 @@ func TestSetWatchers(t *testing.T) {
 			}
 		}()
 
-		// we create lots of paths to watch, to make sure a "set watches" request
-		// on re-create will be too big and be required to span multiple packets
+		expectedTotalWatches := 0
+
+		// Create lots of paths for data expected that we expect to be restored on reconnect.
+		// There are too many expected for a single "setWatches2" request, so they will be spread across multiple packets.
 		for i := 0; i < 100; i++ {
 			testPath, err := c1.Create(fmt.Sprintf("/gozk-test-%d", i), []byte{}, 0, WorldACL(PermAll))
 			if err != nil {
@@ -1155,8 +1221,10 @@ func TestSetWatchers(t *testing.T) {
 				t.Fatalf("GetW returned: %+v", err)
 			}
 			testPaths[testPath] = testEvCh
+			expectedTotalWatches++
 		}
 
+		// Create a child watch at root, which we expect to be restored on reconnect.
 		children, stat, childCh, err := c1.ChildrenW("/")
 		if err != nil {
 			t.Fatalf("Children returned error: %+v", err)
@@ -1165,76 +1233,238 @@ func TestSetWatchers(t *testing.T) {
 		} else if len(children) < 1 {
 			t.Fatal("Children should return at least 1 child")
 		}
+		expectedTotalWatches++
+
+		// Create an exists watch on `/gozk-test-x`, which we expect to be restored on reconnect.
+		found, _, existsCh, err := c1.ExistsW("/gozk-test-x") // Path doesn't exist, yet, but that's ok.
+		if err != nil {
+			t.Fatalf("ExistsW returned error: %+v", err)
+		} else if found {
+			t.Fatal("ExistsW returned true")
+		}
+		expectedTotalWatches++
+
+		// Create a persistent watch on `/gozk-test-x`, which we expect to be restored on reconnect.
+		persistentCh, err := c1.AddWatch("/gozk-test-x", false)
+		if err != nil {
+			t.Fatalf("AddWatch returned error: %+v", err)
+		}
+		expectedTotalWatches++
+
+		// Create persistent-recursive watch on `/`, which we expect to be restored on reconnect.
+		persistentRecCh, err := c1.AddWatch("/", true)
+		if err != nil {
+			t.Fatalf("AddWatch (recursive) returned error: %+v", err)
+		}
+		expectedTotalWatches++
 
 		// Simulate network error by brutally closing the network connection.
 		_ = c1.conn.Close()
+
+		// On c2 connection, delete all the test paths.
+		// This would normally fire events on data and persistent watches, but the connection c1 is gone.
+		// We expect these events to arrive after reconnect of c1.
 		for p := range testPaths {
 			if err := c2.Delete(p, -1); err != nil && err != ErrNoNode {
 				t.Fatalf("Delete returned error: %+v", err)
 			}
 		}
-		if path, err := c2.Create("/gozk-test", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
+
+		// Create new node `/gozk-test-x` to trigger the exists watch and the persistent watch.
+		// Again, we expect these events to be queued up and delivered after reconnect of c1.
+		if path, err := c2.Create("/gozk-test-x", []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
 			t.Fatalf("Create returned error: %+v", err)
-		} else if path != "/gozk-test" {
-			t.Fatalf("Create returned different path '%s' != '/gozk-test'", path)
+		} else if path != "/gozk-test-x" {
+			t.Fatalf("Create returned different path '%s' != '/gozk-test-x'", path)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond) // Give some time for things to happen.
 
-		// c1 should still be waiting to reconnect, so none of the watches should have been triggered
+		// c1 should still be waiting to reconnect (blocked by reconnect latch),
+		// so none of the expected should have been triggered.
 		for p, ch := range testPaths {
 			select {
-			case <-ch:
+			case _, ok := <-ch:
+				if !ok {
+					t.Fatalf("GetW watcher for %s was closed", p)
+				}
 				t.Fatalf("GetW watcher for %q should not have triggered yet", p)
 			default:
 			}
 		}
 		select {
-		case <-childCh:
+		case _, ok := <-childCh:
+			if !ok {
+				t.Fatalf("ChildrenW watcher was closed")
+			}
 			t.Fatalf("ChildrenW watcher should not have triggered yet")
 		default:
 		}
+		select {
+		case _, ok := <-existsCh:
+			if !ok {
+				t.Fatalf("ExistsW watcher was closed")
+			}
+			t.Fatalf("ExistsW watcher should not have triggered yet")
+		default:
+		}
+		select {
+		case _, ok := <-persistentCh:
+			if !ok {
+				t.Fatalf("Persistent watcher was closed")
+			}
+			t.Fatalf("Persistent watcher should not have triggered yet")
+		default:
+		}
+		select {
+		case _, ok := <-persistentRecCh:
+			if !ok {
+				t.Fatalf("Persistent-recursive watcher was closed")
+			}
+			t.Fatalf("Persistent-recursive watcher should not have triggered yet")
+		default:
+		}
 
-		// now we let the reconnect occur and make sure it resets watches
+		// Now we let the reconnect occur and make sure it restores expected.
 		close(c1.reconnectLatch)
 
+		// Verify that we see the EventNodeDeleted events.
 		for p, ch := range testPaths {
 			select {
-			case ev := <-ch:
+			case ev, ok := <-ch:
+				if !ok {
+					t.Fatalf("GetW watcher for %s was closed", p)
+				}
 				if ev.Err != nil {
 					t.Fatalf("GetW watcher error %+v", ev.Err)
 				}
 				if ev.Path != p {
 					t.Fatalf("GetW watcher wrong path %s instead of %s", ev.Path, p)
 				}
+				if ev.Type != EventNodeDeleted {
+					t.Fatalf("GetW watcher wrong event type %d instead of %d", ev.Type, EventNodeDeleted)
+				}
 			case <-time.After(2 * time.Second):
 				t.Fatal("GetW watcher timed out")
 			}
 		}
 
+		// Verify that we see the EventNodeChildrenChanged event at "/".
 		select {
-		case ev := <-childCh:
+		case ev, ok := <-childCh:
+			if !ok {
+				t.Fatalf("ChildrenW watcher was closed")
+			}
 			if ev.Err != nil {
-				t.Fatalf("Child watcher error %+v", ev.Err)
+				t.Fatalf("ChildrenW watcher error %+v", ev.Err)
 			}
 			if ev.Path != "/" {
-				t.Fatalf("Child watcher wrong path %s instead of %s", ev.Path, "/")
+				t.Fatalf("ChildrenW watcher wrong path %s instead of %s", ev.Path, "/")
+			}
+			if ev.Type != EventNodeChildrenChanged {
+				t.Fatalf("ChildrenW watcher wrong event type %d instead of %d", ev.Type, EventNodeChildrenChanged)
 			}
 		case <-time.After(2 * time.Second):
-			t.Fatal("Child watcher timed out")
+			t.Fatal("ChildrenW watcher timed out")
 		}
 
-		// Yay! All watches fired correctly. Now we also inspect the actual set-watch request objects
+		// Verify that we see the EventNodeCreated event at "/gozk-test-x" from exists watch.
+		select {
+		case ev, ok := <-existsCh:
+			if !ok {
+				t.Fatalf("ExistsW watcher was closed")
+			}
+			if ev.Err != nil {
+				t.Fatalf("ExistsW watcher error %+v", ev.Err)
+			}
+			if ev.Path != "/gozk-test-x" {
+				t.Fatalf("ExistsW watcher wrong path %s instead of %s", ev.Path, "/gozk-test-x")
+			}
+			if ev.Type != EventNodeCreated {
+				t.Fatalf("ExistsW watcher wrong event type %d instead of %d", ev.Type, EventNodeCreated)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("ExistsW watcher timed out")
+		}
+
+		// Verify that we see the EventNodeCreated event at "/gozk-test-x" from persistent watch.
+		select {
+		case ev, ok := <-persistentCh:
+			if !ok {
+				t.Fatalf("Persistent watcher was closed")
+			}
+			if ev.Err != nil {
+				t.Fatalf("Persistent watcher error %+v", ev.Err)
+			}
+			if ev.Path != "/gozk-test-x" {
+				t.Fatalf("Persistent watcher wrong path %s instead of %s", ev.Path, "/gozk-test-x")
+			}
+			if ev.Type != EventNodeCreated {
+				t.Fatalf("Persistent watcher wrong event type %d instead of %d", ev.Type, EventNodeCreated)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("Persistent watcher timed out")
+		}
+
+		// The persistent-recursive watcher should have observed all test-paths deleted and `/gozk-test-x` created.
+		var observedPathsDeleted []string
+		var observedPathsCreated []string
+		for {
+			if len(observedPathsDeleted) >= len(testPaths) && len(observedPathsCreated) >= 1 {
+				// We saw enough events.
+				break
+			}
+
+			select {
+			case ev, ok := <-persistentRecCh:
+				if !ok {
+					t.Fatalf("Persistent-recursive watcher was closed")
+				}
+				if ev.Err != nil {
+					t.Fatalf("Persistent-recursive watcher error %+v", ev.Err)
+				}
+				if ev.Type == EventNodeDeleted {
+					observedPathsDeleted = append(observedPathsDeleted, ev.Path)
+				} else if ev.Type == EventNodeCreated {
+					observedPathsCreated = append(observedPathsCreated, ev.Path)
+				} else if ev.Type == EventNodeChildrenChanged {
+					// Ignore this event.
+				} else {
+					t.Fatalf("Persistent-recursive watcher wrong event type %d", ev.Type)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatalf("Persistent-recursive watcher timed out")
+			}
+		}
+
+		if len(observedPathsDeleted) != len(testPaths) {
+			t.Fatalf("Persistent-recursive watcher should have observed %d paths deleted, but observed %d", len(testPaths), len(observedPathsDeleted))
+		}
+		for _, p := range observedPathsDeleted {
+			if _, ok := testPaths[p]; !ok {
+				t.Fatalf("Persistent-recursive watcher observed unexpected path deleted: %s", p)
+			}
+		}
+
+		if len(observedPathsCreated) != 1 {
+			t.Fatalf("Persistent-recursive watcher should have observed 1 created path, got %d", len(observedPathsCreated))
+		}
+		if observedPathsCreated[0] != "/gozk-test-x" {
+			t.Fatalf("Persistent-recursive watcher should have observed /gozk-test-x created, got %s", observedPathsCreated[0])
+		}
+
+		// Yay! All expected fired correctly. Now we also inspect the actual set-watch request objects
 		// to ensure they didn't exceed the expected packet set.
 		buf := make([]byte, bufferSize)
-		totalWatches := 0
+		actualTotalWatches := 0
 		actualReqs := setWatchReqs.Load().([]*setWatches2Request)
 		if len(actualReqs) < 4 {
-			// sanity check: we should have generated *at least* 4 requests to reset watches
+			// sanity check: we should have generated *at least* 4 requests to reset expected
 			t.Fatalf("too few setWatches2Request messages: %d", len(actualReqs))
 		}
 		for _, r := range actualReqs {
-			totalWatches += len(r.ChildWatches) + len(r.DataWatches) + len(r.ExistWatches)
+			actualTotalWatches += len(r.ChildWatches) + len(r.DataWatches) + len(r.ExistWatches) +
+				len(r.PersistentWatches) + len(r.PersistentRecursiveWatches)
 			n, err := encodePacket(buf, r)
 			if err != nil {
 				t.Fatalf("encodePacket failed: %v! request:\n%+v", err, r)
@@ -1243,8 +1473,9 @@ func TestSetWatchers(t *testing.T) {
 			}
 		}
 
-		if totalWatches != len(testPaths)+1 {
-			t.Fatalf("setWatches2Requests did not include all expected watches; expecting %d, got %d", len(testPaths)+1, totalWatches)
+		if actualTotalWatches != expectedTotalWatches {
+			t.Fatalf("setWatches2Requests did not include all expected expected; expecting %d, got %d",
+				expectedTotalWatches, actualTotalWatches)
 		}
 	})
 }

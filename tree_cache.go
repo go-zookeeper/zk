@@ -137,29 +137,6 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 		_ = tc.conn.RemoveWatch(watchCh)
 	}()
 
-	// Temporary workaround for race condition on Events vs Get answers
-	// FIXME: replace with a better data structure
-	watchBuffer := make(chan Event, 10240)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				close(watchBuffer)
-				return
-			case e, ok := <-watchCh:
-				if !ok {
-					tc.logger.Printf("watchBuffer channel closed unexpectedly")
-					return
-				}
-				select {
-				case watchBuffer <- e:
-				default:
-					tc.logger.Printf("watchBuffer is full, skip event: %+v", e)
-				}
-			}
-		}
-	}()
-
 	// Populate a new tree with a parallel, breadth-first traversal.
 	// We won't touch the existing tree until we're done, after which we'll atomically swap it.
 	newRoot := newTreeCacheNode("", &Stat{}, nil)
@@ -214,7 +191,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 	// Process watch events until the context is canceled, watching is stopped, or an error occurs.
 	for {
 		select {
-		case e, ok := <-watchBuffer:
+		case e, ok := <-watchCh:
 			if !ok {
 				return fmt.Errorf("watch channel closed unexpectedly")
 			}
@@ -273,16 +250,18 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 }
 
 func (tc *TreeCache) waitForSession(ctx context.Context) error {
-	select {
-	case e, ok := <-tc.conn.eventChan:
-		if !ok {
-			return fmt.Errorf("connection closed before state reached")
+	for {
+		if tc.conn.State() == StateHasSession {
+			break
 		}
-		if e.State == StateHasSession {
-			return nil
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tc.conn.shouldQuit:
+			return ErrClosing
+		case <-time.After(100 * time.Millisecond):
 		}
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 
 	return nil
