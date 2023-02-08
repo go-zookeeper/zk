@@ -38,7 +38,8 @@ func NewCachedLeavesWalker(conn *Conn, path string) (*CachedLeavesWalker, error)
 
 	go w.eventLoop()
 	if err = conn.TreeWalker(path).
-		BreadthFirstParallel().
+		BreadthFirst().
+		Concurrency(8). // This is just randomly chosen.
 		LeavesOnly().
 		Walk(func(p string, _ *Stat) error {
 			w.lock.Lock()

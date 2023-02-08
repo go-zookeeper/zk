@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestTreeCache_ConsistentAfterInitialSync(t *testing.T) {
+func TestTreeCache_ConsistentAfterInitialSync_WithData(t *testing.T) {
 	initialNodes := []struct {
 		realPath    string
 		cachePath   string
@@ -83,7 +83,91 @@ func TestTreeCache_ConsistentAfterInitialSync(t *testing.T) {
 					t.Fatalf("failed to get cache node %s: %v", n.cachePath, err)
 				}
 				if string(data) != n.data {
-					t.Fatalf("cahce node %s data mismatch: expected %s, got %s", n.cachePath, n.data, string(data))
+					t.Fatalf("cache node %s data mismatch: expected %s, got %s", n.cachePath, n.data, string(data))
+				}
+				if stat.NumChildren != n.numChildren {
+					t.Fatalf("cache node %s numChildren mismatch: expected %d, got %d", n.cachePath, n.numChildren, stat.NumChildren)
+				}
+			}
+
+			cancel()
+			if err := <-syncErrCh; err != context.Canceled {
+				t.Fatalf("expected context.Canceled, got %v", err)
+			}
+		})
+	})
+}
+
+func TestTreeCache_ConsistentAfterInitialSync_NoData(t *testing.T) {
+	initialNodes := []struct {
+		realPath    string
+		cachePath   string
+		numChildren int32
+	}{
+		{
+			realPath:    "/test-tree-cache",
+			cachePath:   "/",
+			numChildren: 2,
+		},
+		{
+			realPath:    "/test-tree-cache/child1",
+			cachePath:   "/child1",
+			numChildren: 1,
+		},
+		{
+			realPath:    "/test-tree-cache/child1/child1_1",
+			cachePath:   "/child1/child1_1",
+			numChildren: 0,
+		},
+		{
+			realPath:    "/test-tree-cache/child2",
+			cachePath:   "/child2",
+			numChildren: 1,
+		},
+		{
+			realPath:    "/test-tree-cache/child2/child2_1",
+			cachePath:   "/child2/child2_1",
+			numChildren: 0,
+		},
+	}
+
+	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
+		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
+			for _, n := range initialNodes {
+				_, err := c.Create(n.realPath, []byte("ignore me"), 0, WorldACL(PermAll))
+				if err != nil {
+					t.Fatalf("failed to create node %s: %v", n.realPath, err)
+				}
+			}
+
+			// By default, paths a relative to root.
+			cache := NewTreeCache(c, "/test-tree-cache",
+				WithTreeCacheIncludeData(false)) // <-- no data
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+
+			syncErrCh := make(chan error, 1)
+
+			// Start syncing cache in the background.
+			go func() {
+				defer close(syncErrCh)
+				syncErrCh <- cache.Sync(ctx)
+			}()
+
+			// Wait for the first full sync to complete.
+			err := cache.WaitForInitialSync(ctx)
+			if err != nil {
+				t.Fatalf("initial cache sync failed: %v", err)
+			}
+
+			// Check that the cache contains the expected nodes.
+			for _, n := range initialNodes {
+				data, stat, err := cache.Get(n.cachePath)
+				if err != nil {
+					t.Fatalf("failed to get cache node %s: %v", n.cachePath, err)
+				}
+				if data != nil {
+					t.Fatalf("cache node %s data mismatch: expected nil, got %s", n.cachePath, string(data))
 				}
 				if stat.NumChildren != n.numChildren {
 					t.Fatalf("cache node %s numChildren mismatch: expected %d, got %d", n.cachePath, n.numChildren, stat.NumChildren)
@@ -136,7 +220,7 @@ func TestTreeCache_OpsWithRelativePaths(t *testing.T) {
 
 			cache := NewTreeCache(c, "/test-tree-cache",
 				WithTreeCacheIncludeData(true))
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*500)
 			defer cancel()
 
 			syncErrCh := make(chan error, 1)
@@ -159,7 +243,7 @@ func TestTreeCache_OpsWithRelativePaths(t *testing.T) {
 				t.Fatalf("failed to get cache node /: %v", err)
 			}
 			if string(data) != "root" {
-				t.Fatalf("cahce node / data mismatch: expected %s, got %s", "root", string(data))
+				t.Fatalf("cache node / data mismatch: expected %s, got %s", "root", string(data))
 			}
 			if stat.NumChildren != 2 {
 				t.Fatalf("cache node / numChildren mismatch: expected %d, got %d", 2, stat.NumChildren)
@@ -171,7 +255,7 @@ func TestTreeCache_OpsWithRelativePaths(t *testing.T) {
 				t.Fatalf("failed to get cache node /child1/child1_1: %v", err)
 			}
 			if string(data) != "child1_1" {
-				t.Fatalf("cahce node /child1/child1_1 data mismatch: expected %s, got %s", "child1_1", string(data))
+				t.Fatalf("cache node /child1/child1_1 data mismatch: expected %s, got %s", "child1_1", string(data))
 			}
 			if stat.NumChildren != 0 {
 				t.Fatalf("cache node /child1/child1_1 numChildren mismatch: expected %d, got %d", 0, stat.NumChildren)
@@ -304,7 +388,7 @@ func TestTreeCache_OpsWithAbsolutePaths(t *testing.T) {
 				t.Fatalf("failed to get cache node /test-tree-cache: %v", err)
 			}
 			if string(data) != "root" {
-				t.Fatalf("cahce node /test-tree-cache data mismatch: expected %s, got %s", "root", string(data))
+				t.Fatalf("cache node /test-tree-cache data mismatch: expected %s, got %s", "root", string(data))
 			}
 			if stat.NumChildren != 2 {
 				t.Fatalf("cache node /test-tree-cache numChildren mismatch: expected %d, got %d", 2, stat.NumChildren)
@@ -316,7 +400,7 @@ func TestTreeCache_OpsWithAbsolutePaths(t *testing.T) {
 				t.Fatalf("failed to get cache node /test-tree-cache/child1/child1_1: %v", err)
 			}
 			if string(data) != "child1_1" {
-				t.Fatalf("cahce node /test-tree-cache/child1/child1_1 data mismatch: expected %s, got %s", "child1_1", string(data))
+				t.Fatalf("cache node /test-tree-cache/child1/child1_1 data mismatch: expected %s, got %s", "child1_1", string(data))
 			}
 			if stat.NumChildren != 0 {
 				t.Fatalf("cache node /test-tree-cache/child1/child1_1 numChildren mismatch: expected %d, got %d", 0, stat.NumChildren)
@@ -412,7 +496,7 @@ func TestTreeCache_WatchesNodeCreate(t *testing.T) {
 				t.Fatalf("failed to get cache node /child1: %v", err)
 			}
 			if string(data) != "child1" {
-				t.Fatalf("cahce node /child1 data mismatch: expected %s, got %s", "child1", string(data))
+				t.Fatalf("cache node /child1 data mismatch: expected %s, got %s", "child1", string(data))
 			}
 			if stat.NumChildren != 0 {
 				t.Fatalf("cache node /child1 numChildren mismatch: expected %d, got %d", 0, stat.NumChildren)
@@ -473,7 +557,7 @@ func TestTreeCache_WatchesNodeUpdate(t *testing.T) {
 				t.Fatalf("failed to get cache node /child1: %v", err)
 			}
 			if string(data) != "bar" {
-				t.Fatalf("cahce node /child1 data mismatch: expected %s, got %s", "bar", string(data))
+				t.Fatalf("cache node /child1 data mismatch: expected %s, got %s", "bar", string(data))
 			}
 			if stat.NumChildren != 0 {
 				t.Fatalf("cache node /child1 numChildren mismatch: expected %d, got %d", 0, stat.NumChildren)

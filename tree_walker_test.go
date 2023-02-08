@@ -27,9 +27,9 @@ func TestTreeWalker(t *testing.T) {
 			},
 		},
 		{
-			name: "DepthFirstParallel_IncludeRoot",
+			name: "DepthFirst_Concurrency2_IncludeRoot",
 			setupWalker: func(w TreeWalker) TreeWalker {
-				return w.DepthFirstParallel().IncludeRoot(true)
+				return w.DepthFirst().Concurrency(2).IncludeRoot(true)
 			},
 			expected: []string{
 				"/gozk-test-walker/a/b",
@@ -54,9 +54,9 @@ func TestTreeWalker(t *testing.T) {
 			},
 		},
 		{
-			name: "BreadthFirstParallel_IncludeRoot",
+			name: "BreadthFirst_Concurrency2_IncludeRoot",
 			setupWalker: func(w TreeWalker) TreeWalker {
-				return w.BreadthFirstParallel().IncludeRoot(true)
+				return w.BreadthFirst().IncludeRoot(true).Concurrency(2)
 			},
 			expected: []string{
 				"/gozk-test-walker",
@@ -80,9 +80,9 @@ func TestTreeWalker(t *testing.T) {
 			},
 		},
 		{
-			name: "DepthFirstParallel_ExcludeRoot",
+			name: "DepthFirst_Concurrency2_ExcludeRoot",
 			setupWalker: func(w TreeWalker) TreeWalker {
-				return w.DepthFirstParallel().IncludeRoot(false)
+				return w.DepthFirst().Concurrency(2).IncludeRoot(false)
 			},
 			expected: []string{
 				"/gozk-test-walker/a/b",
@@ -105,9 +105,9 @@ func TestTreeWalker(t *testing.T) {
 			},
 		},
 		{
-			name: "BreadthFirstParallel_ExcludeRoot",
+			name: "BreadthFirst_Concurrency2_ExcludeRoot",
 			setupWalker: func(w TreeWalker) TreeWalker {
-				return w.BreadthFirstParallel().IncludeRoot(false)
+				return w.BreadthFirst().Concurrency(2).IncludeRoot(false)
 			},
 			expected: []string{
 				"/gozk-test-walker/a",
@@ -128,9 +128,9 @@ func TestTreeWalker(t *testing.T) {
 			},
 		},
 		{
-			name: "DepthFirstParallel_LeavesOnly",
+			name: "DepthFirst_Concurrency2_LeavesOnly",
 			setupWalker: func(w TreeWalker) TreeWalker {
-				return w.DepthFirstParallel().LeavesOnly()
+				return w.DepthFirst().Concurrency(2).LeavesOnly()
 			},
 			expected: []string{
 				"/gozk-test-walker/a/b",
@@ -149,9 +149,9 @@ func TestTreeWalker(t *testing.T) {
 			},
 		},
 		{
-			name: "BreadthFirstParallel_LeavesOnly",
+			name: "BreadthFirst_Concurrency2_LeavesOnly",
 			setupWalker: func(w TreeWalker) TreeWalker {
-				return w.BreadthFirstParallel().LeavesOnly()
+				return w.BreadthFirst().Concurrency(2).LeavesOnly()
 			},
 			expected: []string{
 				"/gozk-test-walker/a/b",

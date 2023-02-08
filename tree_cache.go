@@ -16,6 +16,7 @@ func NewTreeCache(conn *Conn, path string, options ...TreeCacheOption) *TreeCach
 		rootPath:       path,
 		rootNode:       newTreeCacheNode("", &Stat{}, nil),
 		reservoirLimit: defaultReservoirLimit,
+		concurrency:    1,
 	}
 	for _, option := range options {
 		option(tc)
@@ -54,6 +55,13 @@ func WithTreeCacheAbsolutePaths(absolutePaths bool) TreeCacheOption {
 func WithTreeCacheReservoirLimit(reservoirLimit uint32) TreeCacheOption {
 	return func(tc *TreeCache) {
 		tc.reservoirLimit = reservoirLimit
+	}
+}
+
+// WithTreeCacheConcurrency returns an option to use the specified number of goroutines to sync the tree cache.
+func WithTreeCacheConcurrency(concurrency int) TreeCacheOption {
+	return func(tc *TreeCache) {
+		tc.concurrency = concurrency
 	}
 }
 
@@ -142,6 +150,7 @@ type TreeCache struct {
 	includeData       bool           // true to include data in cache; false to omit.
 	absolutePaths     bool           // true to report full/absolute paths; false to report paths relative to rootPath.
 	reservoirLimit    uint32         // The reservoir size limit for persistent watchers. Defaults to defaultReservoirLimit.
+	concurrency       int            // The number of goroutines to use for syncing the tree cache. Defaults to 1.
 	rootNode          *treeCacheNode // Root node of the tree.
 	treeMutex         sync.RWMutex   // Protects tree state (rootNode and all descendants).
 	syncing           bool           // Set to true while Sync() is running; false otherwise.
@@ -215,17 +224,16 @@ func (tc *TreeCache) Sync(ctx context.Context) (err error) {
 			continue //  Re-check conditions.
 		}
 
-		if err := tc.doSync(ctx); err != nil {
-			tc.logger.Printf("failed to sync tree cache: %v", err)
+		if err := tc.doSyncCycle(ctx); err != nil {
+			tc.logger.Printf("failed sync-cycle of tree cache: %v", err)
 		}
 
 		// Loop back to restart next sync cycle.
 	}
 }
 
-func (tc *TreeCache) doSync(ctx context.Context) error {
-	// Start a recursive watch, so we do not miss any changes.
-	// We'll catch up with the changes after the initial sync.
+func (tc *TreeCache) doSyncCycle(ctx context.Context) error {
+	// Start a recursive watch to capture changes during the full sync walk.
 	watchCh, err := tc.conn.AddWatchCtx(ctx, tc.rootPath, true,
 		WithWatcherInvalidateOnDisconnect(),
 		WithWatcherReservoirLimit(tc.reservoirLimit))
@@ -236,48 +244,10 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 		_ = tc.conn.RemoveWatch(watchCh)
 	}()
 
-	// Populate a new tree with a parallel, breadth-first traversal.
-	// We won't touch the existing tree until we're done, after which we'll atomically swap it.
-	newRoot := newTreeCacheNode("", &Stat{}, nil)
-	newRootMutex := sync.Mutex{} // Protects newRoot and all descendants during parallel traversal.
-	err = tc.conn.TreeWalker(tc.rootPath).
-		BreadthFirstParallel().
-		IncludeRoot(true).
-		WalkCtx(ctx, func(ctx context.Context, path string, stat *Stat) error {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
-			subPath := path[len(tc.rootPath):]
-			var data []byte
-
-			if tc.includeData {
-				var err error
-				if data, stat, err = tc.conn.GetCtx(ctx, path); err != nil {
-					if err == ErrNoNode {
-						return nil // Ignore race condition.
-					}
-					return err
-				}
-			}
-
-			newRootMutex.Lock()
-			defer newRootMutex.Unlock()
-
-			n := newRoot.ensurePath(subPath)
-			n.stat = stat
-			n.data = data
-
-			return nil
-		})
-	if err != nil {
+	// Perform a full sync walk to populate the tree.
+	if err = tc.doFullSync(ctx); err != nil {
 		return err
 	}
-
-	// Swap the new tree into place.
-	tc.treeMutex.Lock()
-	tc.rootNode = newRoot
-	tc.treeMutex.Unlock()
 
 	tc.syncMutex.Lock()
 	if !tc.initialSyncDone {
@@ -291,7 +261,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 		tc.listener.OnTreeSynced()
 	}
 
-	// Process watch events until the context is canceled, watching is stopped, or an error occurs.
+	// Now process watch events to keep the tree in-sync with state changes.
 	for {
 		select {
 		case e, ok := <-watchCh:
@@ -382,6 +352,55 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+func (tc *TreeCache) doFullSync(ctx context.Context) error {
+	// Populate a new tree with a parallel, breadth-first traversal.
+	// We won't touch the existing tree until we're done, after which we'll atomically swap it.
+	newRoot := newTreeCacheNode("", &Stat{}, nil)
+	newRootMutex := sync.Mutex{} // Protects newRoot and all descendants.
+
+	err := tc.conn.TreeWalker(tc.rootPath).
+		BreadthFirst().
+		IncludeRoot(true).
+		Concurrency(tc.concurrency).
+		WalkCtx(ctx, func(ctx context.Context, path string, stat *Stat) error {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			subPath := path[len(tc.rootPath):]
+			var data []byte
+
+			if tc.includeData {
+				var err error
+				if data, stat, err = tc.conn.GetCtx(ctx, path); err != nil {
+					if err == ErrNoNode {
+						return nil // Ignore race condition.
+					}
+					return err
+				}
+			}
+
+			newRootMutex.Lock()
+			defer newRootMutex.Unlock()
+
+			n := newRoot.ensurePath(subPath)
+			n.stat = stat
+			n.data = data
+
+			return nil
+		})
+	if err != nil {
+		return err
+	}
+
+	// Swap the new tree into place.
+	tc.treeMutex.Lock()
+	tc.rootNode = newRoot
+	tc.treeMutex.Unlock()
+
+	return nil
 }
 
 func (tc *TreeCache) waitForSession(ctx context.Context) error {
