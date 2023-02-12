@@ -75,6 +75,7 @@ type Conn struct {
 	passwd           []byte
 
 	dialer         Dialer
+	servers 	   []string
 	hostProvider   HostProvider
 	serverMu       sync.Mutex // protects server
 	server         string     // remember the address/port of the current server
@@ -193,6 +194,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 	ec := make(chan Event, eventChanSize)
 	conn := &Conn{
 		dialer:         net.DialTimeout,
+		servers: 		srvs,
 		hostProvider:   &DNSHostProvider{},
 		conn:           nil,
 		state:          StateDisconnected,
@@ -388,6 +390,7 @@ func (c *Conn) connect() error {
 		}
 
 		c.logger.Printf("Failed to connect to %s: %+v", c.Server(), err)
+		c.hostProvider.Init(c.servers)
 	}
 }
 
