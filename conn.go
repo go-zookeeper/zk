@@ -113,6 +113,8 @@ type Conn struct {
 	logInfo bool // true if information messages are logged; false if only errors are logged
 
 	buf []byte
+
+	configAddress []string
 }
 
 // connOption represents a connection option.
@@ -163,6 +165,9 @@ type HostProvider interface {
 	Next() (server string, retryStart bool)
 	// Notify the HostProvider of a successful connection.
 	Connected()
+	// UpdateServerList is called when HostProvider is abnormal.
+	// Update the list of servers.
+	UpdateServerList(servers []string) error
 }
 
 // ConnectWithDialer establishes a new connection to a pool of zookeeper servers
@@ -205,6 +210,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		logInfo:        true, // default is true for backwards compatability
 		buf:            make([]byte, bufferSize),
 		resendZkAuthFn: resendZkAuth,
+		configAddress:  servers,
 	}
 
 	// Set provided options.
@@ -365,6 +371,9 @@ func (c *Conn) sendEvent(evt Event) {
 
 func (c *Conn) connect() error {
 	var retryStart bool
+	// maybe need reload host provider when retryStart twice
+	var retryStartEd bool
+
 	for {
 		c.serverMu.Lock()
 		c.server, retryStart = c.hostProvider.Next()
@@ -373,14 +382,38 @@ func (c *Conn) connect() error {
 		c.setState(StateConnecting)
 
 		if retryStart {
-			c.flushUnsentRequests(ErrNoServer)
-			select {
-			case <-time.After(time.Second):
-				// pass
-			case <-c.shouldQuit:
-				c.setState(StateDisconnected)
-				c.flushUnsentRequests(ErrClosing)
-				return ErrClosing
+
+			if retryStartEd {
+				//hostProvider try to UpdateServerList
+				var err error
+				for {
+					err = c.hostProvider.UpdateServerList(c.configAddress)
+					if err != nil {
+						c.logger.Printf("host provider update server list err %v : %v", c.configAddress, err)
+						<-time.After(time.Second * 1)
+						continue
+					}
+					break
+				}
+
+				retryStartEd = false
+
+				c.serverMu.Lock()
+				c.server, retryStart = c.hostProvider.Next()
+				c.serverMu.Unlock()
+
+			} else {
+
+				c.flushUnsentRequests(ErrNoServer)
+				select {
+				case <-time.After(time.Second):
+					retryStartEd = true
+					// pass
+				case <-c.shouldQuit:
+					c.setState(StateDisconnected)
+					c.flushUnsentRequests(ErrClosing)
+					return ErrClosing
+				}
 			}
 		}
 
