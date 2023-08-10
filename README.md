@@ -8,4 +8,4 @@ Native Go Zookeeper Client Library
 License
 -------
 
-3-clause BSD. See LICENSE file.
+3-clause BSD. See [LICENSE](LICENSE) file.
