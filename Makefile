@@ -20,10 +20,12 @@ $(ZK):
 	tar -zxf $(ZK).tar.gz
 	rm $(ZK).tar.gz
 
+.PHONY: zookeeper
 zookeeper: $(ZK)
 	# we link to a standard directory path so then the tests dont need to find based on version
 	# in the test code. this allows backward compatable testing.
-	ln -s $(ZK) zookeeper
+	rm -f $@
+	ln -s $(ZK) $@
 
 .PHONY: setup
 setup: zookeeper

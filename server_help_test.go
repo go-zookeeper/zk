@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 	}
 
 	tmpPath, err := ioutil.TempDir("", "gozk")
-	requireNoError(t, err, "failed to create tmp dir for test server setup")
+	requireNoErrorf(t, err, "failed to create tmp dir for test server setup")
 
 	success := false
 	startPort := int(rand.Int31n(6000) + 10000)
@@ -67,7 +68,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 
 	for serverN := 0; serverN < size; serverN++ {
 		srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv%d", serverN+1))
-		requireNoError(t, os.Mkdir(srvPath, 0700), "failed to make server path")
+		requireNoErrorf(t, os.Mkdir(srvPath, 0700), "failed to make server path")
 
 		port := startPort + serverN*3
 		cfg := ServerConfig{
@@ -88,20 +89,20 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 
 		cfgPath := filepath.Join(srvPath, _testConfigName)
 		fi, err := os.Create(cfgPath)
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
-		requireNoError(t, cfg.Marshall(fi))
+		requireNoErrorf(t, cfg.Marshall(fi))
 		fi.Close()
 
 		fi, err = os.Create(filepath.Join(srvPath, _testMyIDFileName))
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		_, err = fmt.Fprintf(fi, "%d\n", serverN+1)
 		fi.Close()
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		srv, err := NewIntegrationTestServer(t, cfgPath, stdout, stderr)
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		if err := srv.Start(); err != nil {
 			return nil, err
@@ -251,9 +252,36 @@ func (tc *TestCluster) StopAllServers() error {
 	return nil
 }
 
-func requireNoError(t *testing.T, err error, msgAndArgs ...interface{}) {
+func requireNoErrorf(t *testing.T, err error, msgAndArgs ...interface{}) {
 	if err != nil {
+		t.Helper()
 		t.Logf("received unexpected error: %v", err)
-		t.Fatal(msgAndArgs...)
+		t.Fatalf(msgAndArgs[0].(string), msgAndArgs[1:]...)
+	}
+}
+
+func RequireMinimumZkVersion(t *testing.T, minimum string) {
+	if val, ok := os.LookupEnv("ZK_VERSION"); ok {
+		split := func(v string) (parts []int) {
+			for _, s := range strings.Split(minimum, ".") {
+				i, err := strconv.Atoi(s)
+				if err != nil {
+					t.Fatalf("invalid version segment: %q", s)
+				}
+				parts = append(parts, i)
+			}
+			return parts
+		}
+
+		minimumV, actualV := split(minimum), split(val)
+		for i, p := range minimumV {
+			if actualV[i] < p {
+				if !strings.HasPrefix(val, minimum) {
+					t.Skipf("running with zookeeper that does not support this api (requires at least %s)", minimum)
+				}
+			}
+		}
+	} else {
+		t.Skip("did not detect zk_version from env. skipping test")
 	}
 }
