@@ -26,12 +26,18 @@ const (
 	opGetChildren2    = 12
 	opCheck           = 13
 	opMulti           = 14
+	opCreate2         = 15
 	opReconfig        = 16
+	opCheckWatches    = 17
+	opRemoveWatches   = 18
 	opCreateContainer = 19
 	opCreateTTL       = 21
+	opMultiRead       = 22
 	opClose           = -11
 	opSetAuth         = 100
 	opSetWatches      = 101
+	opSetWatches2     = 105
+	opAddWatch        = 106
 	opError           = -1
 	// Not in protocol, used internally
 	opWatcherEvent = -2
@@ -47,6 +53,7 @@ const (
 	// EventSession represents a session event.
 	EventSession     EventType = -1
 	EventNotWatching EventType = -2
+	EventWatching    EventType = -3
 )
 
 var (
@@ -57,6 +64,7 @@ var (
 		EventNodeChildrenChanged: "EventNodeChildrenChanged",
 		EventSession:             "EventSession",
 		EventNotWatching:         "EventNotWatching",
+		EventWatching:            "EventWatching",
 	}
 )
 
@@ -129,6 +137,8 @@ var (
 	ErrSessionMoved            = errors.New("zk: session moved to another server, so operation is ignored")
 	ErrReconfigDisabled        = errors.New("attempts to perform a reconfiguration operation when reconfiguration feature is disabled")
 	ErrBadArguments            = errors.New("invalid arguments")
+	ErrNoWatcher               = errors.New("zk: no such watcher")
+	ErrUnimplemented           = errors.New("zk: Not implemented")
 	// ErrInvalidCallback         = errors.New("zk: invalid callback specified")
 
 	errCodeToError = map[ErrCode]error{
@@ -147,8 +157,10 @@ var (
 		errClosing:           ErrClosing,
 		errNothing:           ErrNothing,
 		errSessionMoved:      ErrSessionMoved,
+		errNoWatcher:         ErrNoWatcher,
 		errZReconfigDisabled: ErrReconfigDisabled,
 		errBadArguments:      ErrBadArguments,
+		errUnimplemented:     ErrUnimplemented,
 	}
 )
 
@@ -186,6 +198,7 @@ const (
 	errClosing                 ErrCode = -116
 	errNothing                 ErrCode = -117
 	errSessionMoved            ErrCode = -118
+	errNoWatcher               ErrCode = -121
 	// Attempts to perform a reconfiguration operation when reconfiguration feature is disabled
 	errZReconfigDisabled ErrCode = -123
 )
@@ -224,6 +237,7 @@ var (
 		opClose:           "close",
 		opSetAuth:         "setAuth",
 		opSetWatches:      "setWatches",
+		opAddWatch:        "addWatch",
 
 		opWatcherEvent: "watcherEvent",
 	}
@@ -262,4 +276,34 @@ var (
 		ModeFollower:   "follower",
 		ModeStandalone: "standalone",
 	}
+)
+
+// AddWatchMode asd
+type AddWatchMode int32
+
+func (m AddWatchMode) String() string {
+	if name, ok := addWatchModeNames[m]; ok {
+		return name
+	}
+	return "unknown"
+}
+
+const (
+	AddWatchModePersistent          AddWatchMode = iota
+	AddWatchModePersistentRecursive AddWatchMode = iota
+)
+
+var (
+	addWatchModeNames = map[AddWatchMode]string{
+		AddWatchModePersistent:          "persistent",
+		AddWatchModePersistentRecursive: "persistentRecursive",
+	}
+)
+
+type WatcherType int32
+
+const (
+	WatcherTypeChildren = WatcherType(1)
+	WatcherTypeData     = WatcherType(2)
+	WatcherTypeAny      = WatcherType(3)
 )

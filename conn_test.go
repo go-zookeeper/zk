@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -113,85 +114,144 @@ func TestDeadlockInClose(t *testing.T) {
 }
 
 func TestNotifyWatches(t *testing.T) {
+	queueImpls := []struct {
+		name string
+		new  func() EventQueue
+	}{
+		{
+			name: "chan",
+			new:  func() EventQueue { return newChanEventChannel() },
+		},
+		{
+			name: "unlimited",
+			new:  func() EventQueue { return newUnlimitedEventQueue() },
+		},
+	}
+
 	cases := []struct {
 		eType   EventType
 		path    string
 		watches map[watchPathType]bool
 	}{
 		{
-			EventNodeCreated, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: true,
-				{"/", watchTypeChild}: false,
-				{"/", watchTypeData}:  false,
-			},
-		},
-		{
-			EventNodeCreated, "/a",
-			map[watchPathType]bool{
+			eType: EventNodeCreated,
+			path:  "/a",
+			watches: map[watchPathType]bool{
+				{"/a", watchTypeExist}: true,
 				{"/b", watchTypeExist}: false,
+
+				{"/a", watchTypeChild}: false,
+
+				{"/a", watchTypeData}: false,
+
+				{"/a", watchTypePersistent}: true,
+				{"/", watchTypePersistent}:  false,
+
+				{"/a", watchTypePersistentRecursive}: true,
+				{"/", watchTypePersistentRecursive}:  true,
 			},
 		},
 		{
-			EventNodeDataChanged, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: true,
-				{"/", watchTypeData}:  true,
-				{"/", watchTypeChild}: false,
+			eType: EventNodeDataChanged,
+			path:  "/a",
+			watches: map[watchPathType]bool{
+				{"/a", watchTypeExist}: true,
+				{"/a", watchTypeData}:  true,
+				{"/a", watchTypeChild}: false,
+
+				{"/a", watchTypePersistent}: true,
+				{"/", watchTypePersistent}:  false,
+
+				{"/a", watchTypePersistentRecursive}: true,
+				{"/", watchTypePersistentRecursive}:  true,
 			},
 		},
 		{
-			EventNodeChildrenChanged, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: false,
-				{"/", watchTypeData}:  false,
-				{"/", watchTypeChild}: true,
+			eType: EventNodeChildrenChanged,
+			path:  "/a",
+			watches: map[watchPathType]bool{
+				{"/a", watchTypeExist}:               false,
+				{"/a", watchTypeData}:                false,
+				{"/a", watchTypeChild}:               true,
+				{"/a", watchTypePersistent}:          true,
+				{"/a", watchTypePersistentRecursive}: false,
+
+				{"/a", watchTypePersistent}: true,
+				{"/", watchTypePersistent}:  false,
+
+				{"/a", watchTypePersistentRecursive}: false,
+				{"/", watchTypePersistentRecursive}:  false,
 			},
 		},
 		{
-			EventNodeDeleted, "/",
-			map[watchPathType]bool{
-				{"/", watchTypeExist}: true,
-				{"/", watchTypeData}:  true,
-				{"/", watchTypeChild}: true,
+			eType: EventNodeDeleted,
+			path:  "/a",
+			watches: map[watchPathType]bool{
+				{"/a", watchTypeExist}: true,
+				{"/a", watchTypeData}:  true,
+				{"/a", watchTypeChild}: true,
+
+				{"/a", watchTypePersistent}: true,
+				{"/", watchTypePersistent}:  false,
+
+				{"/a", watchTypePersistentRecursive}: true,
+				{"/", watchTypePersistentRecursive}:  true,
 			},
 		},
 	}
 
-	conn := &Conn{watchers: make(map[watchPathType][]chan Event)}
+	for _, impl := range queueImpls {
+		t.Run(impl.name, func(t *testing.T) {
+			for idx, c := range cases {
+				c := c
+				t.Run(fmt.Sprintf("#%d %s", idx, c.eType), func(t *testing.T) {
+					notifications := make([]struct {
+						watchPathType
+						notify bool
+						ch     EventQueue
+					}, len(c.watches))
 
-	for idx, c := range cases {
-		t.Run(fmt.Sprintf("#%d %s", idx, c.eType), func(t *testing.T) {
-			c := c
+					conn := &Conn{watchers: make(map[watchPathType][]EventQueue)}
 
-			notifications := make([]struct {
-				path   string
-				notify bool
-				ch     <-chan Event
-			}, len(c.watches))
-
-			var idx int
-			for wpt, expectEvent := range c.watches {
-				ch := conn.addWatcher(wpt.path, wpt.wType)
-				notifications[idx].path = wpt.path
-				notifications[idx].notify = expectEvent
-				notifications[idx].ch = ch
-				idx++
-			}
-			ev := Event{Type: c.eType, Path: c.path}
-			conn.notifyWatches(ev)
-
-			for _, res := range notifications {
-				select {
-				case e := <-res.ch:
-					if !res.notify || e.Path != res.path {
-						t.Fatal("unexpeted notification received")
+					var idx int
+					for wpt, expectEvent := range c.watches {
+						notifications[idx].watchPathType = wpt
+						notifications[idx].notify = expectEvent
+						ch := impl.new()
+						conn.addWatcher(wpt.path, wpt.wType, ch)
+						notifications[idx].ch = ch
+						if wpt.wType.isPersistent() {
+							e, _ := ch.Next(context.Background())
+							if e.Type != EventWatching {
+								t.Fatalf("First event on persistent watcher should always be EventWatching")
+							}
+						}
+						idx++
 					}
-				default:
-					if res.notify {
-						t.Fatal("expected notification not received")
+
+					conn.notifyWatches(Event{Type: c.eType, Path: c.path})
+
+					for _, res := range notifications {
+						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+						t.Cleanup(cancel)
+
+						e, err := res.ch.Next(ctx)
+						if err == nil {
+							isPathCorrect :=
+								(res.wType == watchTypePersistentRecursive && strings.HasPrefix(e.Path, res.path)) ||
+									e.Path == res.path
+							if !res.notify || !isPathCorrect {
+								t.Logf("unexpeted notification received by %+v: %+v", res, e)
+								t.Fail()
+							}
+						} else {
+							if res.notify {
+								t.Logf("expected notification not received for %+v", res)
+								t.Fail()
+							}
+						}
 					}
-				}
+				})
 			}
 		})
 	}

@@ -1,5 +1,5 @@
 # make file to hold the logic of build and test setup
-ZK_VERSION ?= 3.5.6
+ZK_VERSION ?= 3.6.3
 
 # Apache changed the name of the archive in version 3.5.x and seperated out
 # src and binary packages
@@ -20,10 +20,12 @@ $(ZK):
 	tar -zxf $(ZK).tar.gz
 	rm $(ZK).tar.gz
 
+.PHONY: zookeeper
 zookeeper: $(ZK)
 	# we link to a standard directory path so then the tests dont need to find based on version
 	# in the test code. this allows backward compatable testing.
-	ln -s $(ZK) zookeeper
+	rm -f $@
+	ln -s $(ZK) $@
 
 .PHONY: setup
 setup: zookeeper
