@@ -6,3 +6,4 @@ zookeeper-*/
 zookeeper-*.tar.gz
 apache-zookeeper-*/
 apache-zookeeper-*.tar.gz
+go.sum

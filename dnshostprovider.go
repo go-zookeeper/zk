@@ -13,6 +13,7 @@ import (
 type DNSHostProvider struct {
 	mu         sync.Mutex // Protects everything, so we can add asynchronous updates later.
 	servers    []string
+	hostMap    map[string]string
 	curr       int
 	last       int
 	lookupHost func(string) ([]string, error) // Override of net.LookupHost, for testing.
@@ -31,6 +32,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 	}
 
 	found := []string{}
+	hostMap := map[string]string{}
 	for _, server := range servers {
 		host, port, err := net.SplitHostPort(server)
 		if err != nil {
@@ -42,6 +44,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 		}
 		for _, addr := range addrs {
 			found = append(found, net.JoinHostPort(addr, port))
+			hostMap[net.JoinHostPort(addr, port)] = server
 		}
 	}
 
@@ -53,6 +56,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 	stringShuffle(found)
 
 	hp.servers = found
+	hp.hostMap = hostMap
 	hp.curr = -1
 	hp.last = -1
 
@@ -69,7 +73,7 @@ func (hp *DNSHostProvider) Len() int {
 // Next returns the next server to connect to. retryStart will be true
 // if we've looped through all known servers without Connected() being
 // called.
-func (hp *DNSHostProvider) Next() (server string, retryStart bool) {
+func (hp *DNSHostProvider) Next() (server, hostname string, retryStart bool) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 	hp.curr = (hp.curr + 1) % len(hp.servers)
@@ -77,7 +81,7 @@ func (hp *DNSHostProvider) Next() (server string, retryStart bool) {
 	if hp.last == -1 {
 		hp.last = 0
 	}
-	return hp.servers[hp.curr], retryStart
+	return hp.servers[hp.curr], hp.hostMap[hp.servers[hp.curr]], retryStart
 }
 
 // Connected notifies the HostProvider of a successful connection.

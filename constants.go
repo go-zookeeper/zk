@@ -11,6 +11,7 @@ const (
 	DefaultPort = 2181
 )
 
+// https://github.com/apache/zookeeper/blob/c74658d398cdc1d207aa296cb6e20de00faec03e/zookeeper-server/src/main/java/org/apache/zookeeper/ZooDefs.java
 const (
 	opNotify          = 0
 	opCreate          = 1
@@ -32,6 +33,7 @@ const (
 	opClose           = -11
 	opSetAuth         = 100
 	opSetWatches      = 101
+	opSetSASL         = 102
 	opError           = -1
 	// Not in protocol, used internally
 	opWatcherEvent = -2
@@ -224,6 +226,7 @@ var (
 		opClose:           "close",
 		opSetAuth:         "setAuth",
 		opSetWatches:      "setWatches",
+		opSetSASL:         "setSASL",
 
 		opWatcherEvent: "watcherEvent",
 	}
@@ -263,3 +266,23 @@ var (
 		ModeStandalone: "standalone",
 	}
 )
+
+type SASLType uint8
+
+const (
+	NO_SASL SASLType = iota
+	KERBEROS
+)
+
+var (
+	saslTypeNames = map[SASLType]string{
+		KERBEROS: "kerberos",
+	}
+)
+
+func (s SASLType) String() string {
+	if name := saslTypeNames[s]; name != "" {
+		return name
+	}
+	return "none"
+}

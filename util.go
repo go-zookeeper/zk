@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -51,6 +52,7 @@ func FormatServers(servers []string) []string {
 
 // stringShuffle performs a Fisher-Yates shuffle on a slice of strings
 func stringShuffle(s []string) {
+	rand.Seed(time.Now().UnixNano())
 	for i := len(s) - 1; i > 0; i-- {
 		j := rand.Intn(i + 1)
 		s[i], s[j] = s[j], s[i]

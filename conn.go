@@ -113,6 +113,10 @@ type Conn struct {
 	logInfo bool // true if information messages are logged; false if only errors are logged
 
 	buf []byte
+
+	// sasl auth
+	hostname   string // host with addr
+	saslConfig *SASLConfig
 }
 
 // connOption represents a connection option.
@@ -158,9 +162,9 @@ type HostProvider interface {
 	Init(servers []string) error
 	// Len returns the number of servers.
 	Len() int
-	// Next returns the next server to connect to. retryStart will be true if we've looped through
+	// Next returns the next server/hostname to connect to. retryStart will be true if we've looped through
 	// all known servers without Connected() being called.
-	Next() (server string, retryStart bool)
+	Next() (server string, hostname string, retryStart bool)
 	// Notify the HostProvider of a successful connection.
 	Connected()
 }
@@ -205,6 +209,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		logInfo:        true, // default is true for backwards compatability
 		buf:            make([]byte, bufferSize),
 		resendZkAuthFn: resendZkAuth,
+		saslConfig:     &SASLConfig{SASLType: NO_SASL},
 	}
 
 	// Set provided options.
@@ -310,6 +315,12 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 	}
 }
 
+func WithSASLConfig(saslConfig *SASLConfig) connOption {
+	return func(c *Conn) {
+		c.saslConfig = saslConfig
+	}
+}
+
 // Close will submit a close request with ZK and signal the connection to stop
 // sending and receiving packets.
 func (c *Conn) Close() {
@@ -367,7 +378,7 @@ func (c *Conn) connect() error {
 	var retryStart bool
 	for {
 		c.serverMu.Lock()
-		c.server, retryStart = c.hostProvider.Next()
+		c.server, c.hostname, retryStart = c.hostProvider.Next()
 		c.serverMu.Unlock()
 
 		c.setState(StateConnecting)
@@ -867,6 +878,13 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				if req.recvFunc != nil {
 					req.recvFunc(req, &res, err)
 				}
+
+				// when kerberos auth in GSSAPI_FINISH stage, won't return body data.
+				if req.opcode == opSetSASL && c.saslConfig.SASLType == KERBEROS && err == ErrShortBuffer && res.Err == 0 {
+					req.recvStruct = setSaslResponse{string([]byte{})}
+					err = nil
+				}
+
 				req.recvChan <- response{res.Zxid, err}
 				if req.opcode == opClose {
 					return io.EOF
@@ -1345,6 +1363,17 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 
 	c.credsMu.Lock()
 	defer c.credsMu.Unlock()
+
+	switch c.saslConfig.SASLType {
+	case KERBEROS:
+		var krbAuth = &KerberosAuth{Config: c.saslConfig.KerberosConfig}
+		if err := krbAuth.Authorize(ctx, c); err != nil {
+			c.logger.Printf("failed to authorize with kerberos, err: %s, zookeeper server: %s", err, c.hostname)
+			return err
+		} else {
+			c.logger.Printf("kerberos authorize successfully, zookeeper server: %s", c.hostname)
+		}
+	}
 
 	if c.logInfo {
 		c.logger.Printf("re-submitting `%d` credentials after reconnect", len(c.creds))
