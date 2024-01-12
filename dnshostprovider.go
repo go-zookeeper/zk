@@ -18,6 +18,13 @@ type DNSHostProvider struct {
 	lookupHost func(string) ([]string, error) // Override of net.LookupHost, for testing.
 }
 
+// NewDNSHostProvider provides a way to set up your own lookup function for hosts.
+func NewDNSHostProvider(lookupHost func(string) ([]string, error)) *DNSHostProvider {
+	return &DNSHostProvider{
+		lookupHost: lookupHost,
+	}
+}
+
 // Init is called first, with the servers specified in the connection
 // string. It uses DNS to look up addresses for each server, then
 // shuffles them all together.
