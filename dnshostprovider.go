@@ -6,10 +6,12 @@ import (
 	"sync"
 )
 
-// DNSHostProvider is the default HostProvider. It currently matches
-// the Java StaticHostProvider, resolving hosts from DNS once during
-// the call to Init.  It could be easily extended to re-query DNS
-// periodically or if there is trouble connecting.
+// DNSHostProvider is a simple implementation of a HostProvider. It resolves the hosts once during
+// Init, and iterates through the resolved addresses for every call to Next. Note that if the
+// addresses that back the ZK hosts change, those changes will not be reflected.
+//
+// Deprecated: Because this HostProvider does not attempt to re-read from DNS, it can lead to issues
+// if the addresses of the hosts change. It is preserved for backwards compatibility.
 type DNSHostProvider struct {
 	mu         sync.Mutex // Protects everything, so we can add asynchronous updates later.
 	servers    []string
@@ -30,7 +32,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 		lookupHost = net.LookupHost
 	}
 
-	found := []string{}
+	var found []string
 	for _, server := range servers {
 		host, port, err := net.SplitHostPort(server)
 		if err != nil {
@@ -46,43 +48,38 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 	}
 
 	if len(found) == 0 {
-		return fmt.Errorf("No hosts found for addresses %q", servers)
+		return fmt.Errorf("zk: no hosts found for addresses %q", servers)
 	}
 
 	// Randomize the order of the servers to avoid creating hotspots
-	stringShuffle(found)
+	shuffleSlice(found)
 
 	hp.servers = found
-	hp.curr = -1
-	hp.last = -1
+	hp.curr = 0
+	hp.last = len(hp.servers) - 1
 
 	return nil
 }
 
-// Len returns the number of servers available
-func (hp *DNSHostProvider) Len() int {
-	hp.mu.Lock()
-	defer hp.mu.Unlock()
-	return len(hp.servers)
-}
-
-// Next returns the next server to connect to. retryStart will be true
-// if we've looped through all known servers without Connected() being
-// called.
+// Next returns the next server to connect to. retryStart should be true if this call to Next
+// exhausted the list of known servers without Connected being called. If connecting to this final
+// host fails, the connect loop will back off before invoking Next again for a fresh server.
 func (hp *DNSHostProvider) Next() (server string, retryStart bool) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
-	hp.curr = (hp.curr + 1) % len(hp.servers)
 	retryStart = hp.curr == hp.last
-	if hp.last == -1 {
-		hp.last = 0
-	}
-	return hp.servers[hp.curr], retryStart
+	server = hp.servers[hp.curr]
+	hp.curr = (hp.curr + 1) % len(hp.servers)
+	return server, retryStart
 }
 
 // Connected notifies the HostProvider of a successful connection.
 func (hp *DNSHostProvider) Connected() {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
-	hp.last = hp.curr
+	if hp.curr == 0 {
+		hp.last = len(hp.servers) - 1
+	} else {
+		hp.last = hp.curr - 1
+	}
 }

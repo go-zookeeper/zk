@@ -1,14 +1,21 @@
-
 name: lint
-on: [pull_request]
+on: [push, pull_request]
+
 jobs:
   lint:
     name: lint
+    strategy:
+      matrix:
+        go-version: ["1.21"]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v1
-      - name: Lint code
-        uses: reviewdog/action-golangci-lint@v1
+        uses: actions/checkout@v4
+
+      - name: Install go
+        uses: actions/setup-go@v4
         with:
-          github_token: ${{ secrets.github_token }}
+          go-version: ${{ matrix.go-version }}
+
+      - name: Lint code
+        uses: golangci/golangci-lint-action@v3

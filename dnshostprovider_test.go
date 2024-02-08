@@ -1,6 +1,7 @@
 package zk
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"testing"
@@ -33,7 +34,7 @@ func TestIntegration_DNSHostProviderCreate(t *testing.T) {
 
 	path := "/gozk-test"
 
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
+	if err := zk.Delete(path, -1); err != nil && !errors.Is(err, ErrNoNode) {
 		t.Fatalf("Delete returned error: %+v", err)
 	}
 	if p, err := zk.Create(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
@@ -68,7 +69,6 @@ func newLocalHostPortsFacade(inner HostProvider, ports []int) *localHostPortsFac
 	}
 }
 
-func (lhpf *localHostPortsFacade) Len() int                    { return lhpf.inner.Len() }
 func (lhpf *localHostPortsFacade) Connected()                  { lhpf.inner.Connected() }
 func (lhpf *localHostPortsFacade) Init(servers []string) error { return lhpf.inner.Init(servers) }
 func (lhpf *localHostPortsFacade) Next() (string, bool) {
@@ -165,60 +165,78 @@ func TestIntegration_DNSHostProviderReconnect(t *testing.T) {
 	}
 }
 
-// TestDNSHostProviderRetryStart tests the `retryStart` functionality
-// of DNSHostProvider.
-// It's also probably the clearest visual explanation of exactly how
-// it works.
-func TestDNSHostProviderRetryStart(t *testing.T) {
+// TestHostProvidersRetryStart tests the `retryStart` functionality of DNSHostProvider and
+// StaticHostProvider.
+// It's also probably the clearest visual explanation of exactly how it works.
+func TestHostProvidersRetryStart(t *testing.T) {
 	t.Parallel()
 
-	hp := &DNSHostProvider{lookupHost: func(host string) ([]string, error) {
-		return []string{"192.0.2.1", "192.0.2.2", "192.0.2.3"}, nil
-	}}
-
-	if err := hp.Init([]string{"foo.example.com:12345"}); err != nil {
-		t.Fatal(err)
+	lookupHost := func(host string) ([]string, error) {
+		return []string{host}, nil
 	}
 
-	testdata := []struct {
-		retryStartWant bool
-		callConnected  bool
-	}{
-		// Repeated failures.
-		{false, false},
-		{false, false},
-		{false, false},
-		{true, false},
-		{false, false},
-		{false, false},
-		{true, true},
-
-		// One success offsets things.
-		{false, false},
-		{false, true},
-		{false, true},
-
-		// Repeated successes.
-		{false, true},
-		{false, true},
-		{false, true},
-		{false, true},
-		{false, true},
-
-		// And some more failures.
-		{false, false},
-		{false, false},
-		{true, false}, // Looped back to last known good server: all alternates failed.
-		{false, false},
+	providers := []HostProvider{
+		&DNSHostProvider{
+			lookupHost: lookupHost,
+		},
+		&StaticHostProvider{
+			lookupHost: lookupHost,
+		},
 	}
 
-	for i, td := range testdata {
-		_, retryStartGot := hp.Next()
-		if retryStartGot != td.retryStartWant {
-			t.Errorf("%d: retryStart=%v; want %v", i, retryStartGot, td.retryStartWant)
-		}
-		if td.callConnected {
-			hp.Connected()
-		}
+	for _, hp := range providers {
+		t.Run(fmt.Sprintf("%T", hp), func(t *testing.T) {
+			if err := hp.Init([]string{"foo.com:2121", "bar.com:2121", "baz.com:2121"}); err != nil {
+				t.Fatal(err)
+			}
+
+			testdata := []struct {
+				retryStartWant bool
+				callConnected  bool
+			}{
+				// Repeated failures.
+				{false, false},
+				{false, false},
+				{true, false},
+				{false, false},
+				{false, false},
+				{true, false},
+				{false, true},
+
+				// One success offsets things.
+				{false, false},
+				{false, true},
+				{false, true},
+
+				// Repeated successes.
+				{false, true},
+				{false, true},
+				{false, true},
+				{false, true},
+				{false, true},
+
+				// And some more failures.
+				{false, false},
+				{false, false},
+				{true, false}, // Looped back to last known good server: all alternates failed.
+				{false, false},
+				{false, false},
+				{true, false},
+				{false, false},
+				{false, false},
+				{true, false},
+				{false, false},
+			}
+
+			for i, td := range testdata {
+				_, retryStartGot := hp.Next()
+				if retryStartGot != td.retryStartWant {
+					t.Errorf("%d: retryStart=%v; want %v", i, retryStartGot, td.retryStartWant)
+				}
+				if td.callConnected {
+					hp.Connected()
+				}
+			}
+		})
 	}
 }

@@ -9,13 +9,13 @@ jobs:
         go-version: ['oldstable', 'stable']
     runs-on: ubuntu-latest
     steps:
-      - name: Go ${{ matrix.go }} setup
+      - name: Go ${{ matrix.go-version }} setup
         uses: actions/setup-go@v4
         with:
-            go-version: ${{ matrix.go-version }} 
+            go-version: ${{ matrix.go-version }}
 
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Run unittest ${{ matrix.go }}
-        run: make unittest 
+        run: make unittest

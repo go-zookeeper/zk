@@ -49,12 +49,11 @@ func FormatServers(servers []string) []string {
 	return srvs
 }
 
-// stringShuffle performs a Fisher-Yates shuffle on a slice of strings
-func stringShuffle(s []string) {
-	for i := len(s) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
+// shuffleSlice invokes rand.Shuffle on the given slice.
+func shuffleSlice[T any](s []T) {
+	rand.Shuffle(len(s), func(i, j int) {
 		s[i], s[j] = s[j], s[i]
-	}
+	})
 }
 
 // validatePath will make sure a path is valid before sending the request
