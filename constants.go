@@ -76,9 +76,11 @@ const (
 
 const (
 	// FlagEphemeral means the node is ephemeral.
-	FlagEphemeral = 1
-	FlagSequence  = 2
-	FlagTTL       = 4
+	FlagPersistent = 0
+	FlagEphemeral  = 1
+	FlagSequence   = 2
+	FlagContainer  = 4
+	FlagTTL        = 5
 )
 
 var (
