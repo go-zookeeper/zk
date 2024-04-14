@@ -3,7 +3,6 @@ package zk
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -16,10 +15,6 @@ const (
 	_testConfigName   = "zoo.cfg"
 	_testMyIDFileName = "myid"
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 type TestServer struct {
 	Port   int
@@ -38,6 +33,8 @@ type TestCluster struct {
 // testing. This should be used on CI systems and local only when needed whereas unit tests should remain
 // fast and not rely on external dependencies.
 func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCluster, error) {
+	t.Helper()
+
 	if testing.Short() {
 		t.Skip("ZK cluster tests skipped in short case.")
 	}
@@ -52,8 +49,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 		}
 	}
 
-	tmpPath, err := ioutil.TempDir("", "gozk")
-	requireNoError(t, err, "failed to create tmp dir for test server setup")
+	tmpPath := t.TempDir()
 
 	success := false
 	startPort := int(rand.Int31n(6000) + 10000)
@@ -150,7 +146,7 @@ func (tc *TestCluster) Stop() error {
 	for _, srv := range tc.Servers {
 		srv.Srv.Stop()
 	}
-	defer os.RemoveAll(tc.Path)
+
 	return tc.waitForStop(5, time.Second)
 }
 
@@ -252,6 +248,8 @@ func (tc *TestCluster) StopAllServers() error {
 }
 
 func requireNoError(t *testing.T, err error, msgAndArgs ...interface{}) {
+	t.Helper()
+
 	if err != nil {
 		t.Logf("received unexpected error: %v", err)
 		t.Fatal(msgAndArgs...)

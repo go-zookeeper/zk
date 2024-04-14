@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestRecurringReAuthHang(t *testing.T) {
+func TestIntegration_RecurringReAuthHang(t *testing.T) {
 	zkC, err := StartTestCluster(t, 3, ioutil.Discard, ioutil.Discard)
 	if err != nil {
 		panic(err)

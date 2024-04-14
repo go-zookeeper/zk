@@ -1,0 +1,33 @@
+name: integration_test
+on: [push, pull_request]
+
+jobs:
+  integration_test:
+    name: integration_test
+    strategy:
+      matrix:
+        zk-version: [3.5.8, 3.6.1]
+        go-version: ['oldstable', 'stable']
+    runs-on: ubuntu-latest
+    steps:
+      - name: Go ${{ matrix.go }} setup
+        uses: actions/setup-go@v4
+        with:
+            go-version: ${{ matrix.go-version }} 
+
+      - name: Setup Java 14
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: 14
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Test code
+        run: make test ZK_VERSION=${{ matrix.zk-version }}
+
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v1
+        with:
+          file: ./profile.cov
