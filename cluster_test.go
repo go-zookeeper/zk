@@ -33,8 +33,6 @@ func TestIntegration_BasicCluster(t *testing.T) {
 	}
 	defer zk2.Close()
 
-	time.Sleep(time.Second * 5)
-
 	if _, err := zk1.Create("/gozk-test", []byte("foo-cluster"), 0, WorldACL(PermAll)); err != nil {
 		t.Fatalf("Create failed on node 1: %+v", err)
 	}

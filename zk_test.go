@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -187,6 +186,7 @@ func TestIntegration_CreateContainer(t *testing.T) {
 }
 
 func TestIntegration_IncrementalReconfig(t *testing.T) {
+	// todo: semver test harness for version?
 	if val, ok := os.LookupEnv("zk_version"); ok {
 		if !strings.HasPrefix(val, "3.5") {
 			t.Skip("running with zookeeper that does not support this api")
@@ -199,10 +199,7 @@ func TestIntegration_IncrementalReconfig(t *testing.T) {
 	defer ts.Stop()
 
 	// start and add a new server.
-	tmpPath, err := ioutil.TempDir("", "gozk")
-	requireNoError(t, err, "failed to create tmp dir for test server setup")
-	defer os.RemoveAll(tmpPath)
-
+	tmpPath := t.TempDir()
 	startPort := int(rand.Int31n(6000) + 10000)
 
 	srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv4"))
