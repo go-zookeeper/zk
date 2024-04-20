@@ -1,0 +1,15 @@
+name: static check in one go
+on: pull_request
+
+jobs:
+  in-one:
+    name: Imports
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - name: check
+      uses: danhunsaker/golang-github-actions@v1.3.0
+      with:
+        run: imports,errcheck,lint,shadow,staticcheck,sec
+        token: ${{ secrets.GITHUB_TOKEN }}
+        flags: '{"sec": "-exclude=G104"}'
