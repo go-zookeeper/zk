@@ -21,14 +21,15 @@ jobs:
     - uses: actions/stale@v5
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
-        stale-issue-message: 'Stale issue message'
-        stale-pr-message: 'Stale pull request message'
         stale-issue-label: 'no-issue-activity'
         stale-pr-label: 'no-pr-activity'
         days-before-stale: 180
         days-before-issue-stale: 730
-        days-before-close: 15
+        days-before-close: 30
         days-before-pr-close: -1
-        debug-only: 'true'
-        exempt-issue-milestones: "v2"
+        stale-pr-message: 'Stale pull request detected at 180 days. Please update, comment, or rebase.'
+        stale-issue-message: 'This issue is marked as stale. If you want to keep this issue open, please leave a comment, otherwise the issue will be closed due to inactivity.'
+        close-issue-message: "This issue has been closed due to inactivity after being stale for 30 days."
+        debug-only: true
+        exempt-all-milestones: true
         
