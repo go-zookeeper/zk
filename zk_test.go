@@ -195,7 +195,7 @@ func TestIntegration_IncrementalReconfig(t *testing.T) {
 		t.Skip("did not detect zk_version from env. skipping reconfig test")
 	}
 	ts, err := StartTestCluster(t, 3, nil, logWriter{t: t, p: "[ZKERR] "})
-	requireNoError(t, err, "failed to setup test cluster")
+	requireNoErrorf(t, err, "failed to setup test cluster")
 	defer ts.Stop()
 
 	// start and add a new server.
@@ -204,7 +204,7 @@ func TestIntegration_IncrementalReconfig(t *testing.T) {
 
 	srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv4"))
 	if err := os.Mkdir(srvPath, 0700); err != nil {
-		requireNoError(t, err, "failed to make server path")
+		requireNoErrorf(t, err, "failed to make server path")
 	}
 	testSrvConfig := ServerConfigServer{
 		ID:                 4,
@@ -221,35 +221,35 @@ func TestIntegration_IncrementalReconfig(t *testing.T) {
 	// TODO: clean all this server creating up to a better helper method
 	cfgPath := filepath.Join(srvPath, _testConfigName)
 	fi, err := os.Create(cfgPath)
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
-	requireNoError(t, cfg.Marshall(fi))
+	requireNoErrorf(t, cfg.Marshall(fi))
 	fi.Close()
 
 	fi, err = os.Create(filepath.Join(srvPath, _testMyIDFileName))
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
 	_, err = fmt.Fprintln(fi, "4")
 	fi.Close()
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
 	testServer, err := NewIntegrationTestServer(t, cfgPath, nil, nil)
-	requireNoError(t, err)
-	requireNoError(t, testServer.Start())
+	requireNoErrorf(t, err)
+	requireNoErrorf(t, testServer.Start())
 	defer testServer.Stop()
 
 	zk, events, err := ts.ConnectAll()
-	requireNoError(t, err, "failed to connect to cluster")
+	requireNoErrorf(t, err, "failed to connect to cluster")
 	defer zk.Close()
 
 	err = zk.AddAuth("digest", []byte("super:test"))
-	requireNoError(t, err, "failed to auth to cluster")
+	requireNoErrorf(t, err, "failed to auth to cluster")
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	err = waitForSession(waitCtx, events)
-	requireNoError(t, err, "failed to wail for session")
+	requireNoErrorf(t, err, "failed to wail for session")
 
 	_, _, err = zk.Get("/zookeeper/config")
 	if err != nil {
@@ -265,7 +265,7 @@ func TestIntegration_IncrementalReconfig(t *testing.T) {
 	if err != nil && err == ErrConnectionClosed {
 		t.Log("conneciton closed is fine since the cluster re-elects and we dont reconnect")
 	} else {
-		requireNoError(t, err, "failed to remove node from cluster")
+		requireNoErrorf(t, err, "failed to remove node from cluster")
 	}
 
 	// add node a new 4th node
@@ -274,7 +274,7 @@ func TestIntegration_IncrementalReconfig(t *testing.T) {
 	if err != nil && err == ErrConnectionClosed {
 		t.Log("conneciton closed is fine since the cluster re-elects and we dont reconnect")
 	} else {
-		requireNoError(t, err, "failed to add new server to cluster")
+		requireNoErrorf(t, err, "failed to add new server to cluster")
 	}
 }
 
@@ -289,21 +289,21 @@ func TestIntegration_Reconfig(t *testing.T) {
 
 	// This test enures we can do an non-incremental reconfig
 	ts, err := StartTestCluster(t, 3, nil, logWriter{t: t, p: "[ZKERR] "})
-	requireNoError(t, err, "failed to setup test cluster")
+	requireNoErrorf(t, err, "failed to setup test cluster")
 	defer ts.Stop()
 
 	zk, events, err := ts.ConnectAll()
-	requireNoError(t, err, "failed to connect to cluster")
+	requireNoErrorf(t, err, "failed to connect to cluster")
 	defer zk.Close()
 
 	err = zk.AddAuth("digest", []byte("super:test"))
-	requireNoError(t, err, "failed to auth to cluster")
+	requireNoErrorf(t, err, "failed to auth to cluster")
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	err = waitForSession(waitCtx, events)
-	requireNoError(t, err, "failed to wail for session")
+	requireNoErrorf(t, err, "failed to wail for session")
 
 	_, _, err = zk.Get("/zookeeper/config")
 	if err != nil {
@@ -317,7 +317,7 @@ func TestIntegration_Reconfig(t *testing.T) {
 	}
 
 	_, err = zk.Reconfig(s, -1)
-	requireNoError(t, err, "failed to reconfig cluster")
+	requireNoErrorf(t, err, "failed to reconfig cluster")
 
 	// reconfig to all the hosts again
 	s = []string{}
@@ -326,7 +326,7 @@ func TestIntegration_Reconfig(t *testing.T) {
 	}
 
 	_, err = zk.Reconfig(s, -1)
-	requireNoError(t, err, "failed to reconfig cluster")
+	requireNoErrorf(t, err, "failed to reconfig cluster")
 }
 
 func TestIntegration_OpsAfterCloseDontDeadlock(t *testing.T) {
