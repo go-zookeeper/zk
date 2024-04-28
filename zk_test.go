@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -186,14 +187,8 @@ func TestIntegration_CreateContainer(t *testing.T) {
 }
 
 func TestIntegration_IncrementalReconfig(t *testing.T) {
-	// todo: semver test harness for version?
-	if val, ok := os.LookupEnv("zk_version"); ok {
-		if !strings.HasPrefix(val, "3.5") {
-			t.Skip("running with zookeeper that does not support this api")
-		}
-	} else {
-		t.Skip("did not detect zk_version from env. skipping reconfig test")
-	}
+	requireMinimumZkVersion(t, "3.5")
+
 	ts, err := StartTestCluster(t, 3, nil, logWriter{t: t, p: "[ZKERR] "})
 	requireNoErrorf(t, err, "failed to setup test cluster")
 	defer ts.Stop()
@@ -279,13 +274,7 @@ func TestIntegration_IncrementalReconfig(t *testing.T) {
 }
 
 func TestIntegration_Reconfig(t *testing.T) {
-	if val, ok := os.LookupEnv("zk_version"); ok {
-		if !strings.HasPrefix(val, "3.5") {
-			t.Skip("running with zookeeper that does not support this api")
-		}
-	} else {
-		t.Skip("did not detect zk_version from env. skipping reconfig test")
-	}
+	requireMinimumZkVersion(t, "3.5")
 
 	// This test enures we can do an non-incremental reconfig
 	ts, err := StartTestCluster(t, 3, nil, logWriter{t: t, p: "[ZKERR] "})
@@ -1192,6 +1181,33 @@ func expectLogMessage(t *testing.T, logger *testLogger, pattern string) {
 		t.Fatalf("Failed to log error; expecting message that matches pattern: %s", pattern)
 	} else if len(found) > 1 {
 		t.Fatalf("Logged error redundantly %d times:\n%+v", len(found), found)
+	}
+}
+
+func requireMinimumZkVersion(t *testing.T, minimum string) {
+	t.Helper()
+
+	actualVersionStr, ok := os.LookupEnv("ZK_VERSION")
+	if !ok {
+		t.Skip("did not detect ZK_VERSION from env. skipping test")
+	}
+
+	parseFn := func(v string) (parts []int) {
+		for _, s := range strings.Split(v, ".") {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				t.Fatalf("invalid version segment: %q", s)
+			}
+			parts = append(parts, i)
+		}
+		return parts
+	}
+
+	minimumV, actualV := parseFn(minimum), parseFn(actualVersionStr)
+	for i, p := range minimumV {
+		if actualV[i] < p {
+			t.Skipf("zookeeper required min version not met; requires: %q, actual: %q", minimum, actualVersionStr)
+		}
 	}
 }
 
