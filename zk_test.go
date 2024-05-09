@@ -2,10 +2,11 @@ package zk
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/rand"
+	mathrand "math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -213,7 +214,7 @@ func TestIncrementalReconfig(t *testing.T) {
 			_ = os.RemoveAll(path)
 		}(tmpPath)
 
-		startPort := int(rand.Int31n(6000) + 10000)
+		startPort := int(mathrand.Int31n(6000) + 10000)
 
 		srvPath := filepath.Join(tmpPath, "srv4")
 		if err := os.Mkdir(srvPath, 0700); err != nil {

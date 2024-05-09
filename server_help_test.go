@@ -16,10 +16,6 @@ const (
 	_testMyIDFileName = "myid"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 type TestServer struct {
 	Port   int
 	Path   string
