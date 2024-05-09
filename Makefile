@@ -46,13 +46,13 @@ tools: tools/tools.go tools/go.mod
 .PHONY: lint
 lint: tools
 	go vet ./...
-	$(GOLANGCI_LINT_BIN) run -v --deadline 10m
+	$(GOLANGCI_LINT_BIN) run -v
 
 .PHONY: lint-fix
 lint-fix: tools
 	go fmt ./...
 	go vet ./...
-	$(GOLANGCI_LINT_BIN) run -v --deadline 10m --fix
+	$(GOLANGCI_LINT_BIN) run -v --fix
 
 .PHONY: build
 build:
