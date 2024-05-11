@@ -179,6 +179,11 @@ func ConnectWithDialer(servers []string, sessionTimeout time.Duration, dialer Di
 // server and keep the same session. This is means any ephemeral nodes and
 // watches are maintained.
 func Connect(servers []string, sessionTimeout time.Duration, options ...connOption) (*Conn, <-chan Event, error) {
+	return ConnectWithContext(context.Background(), servers, sessionTimeout, options...)
+}
+
+// ConnectWithContext is the same as Connect (above) but includes a context parameter
+func ConnectWithContext(ctx context.Context, servers []string, sessionTimeout time.Duration, options ...connOption) (*Conn, <-chan Event, error) {
 	if len(servers) == 0 {
 		return nil, nil, errors.New("zk: server list must not be empty")
 	}
@@ -217,8 +222,6 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 	}
 
 	conn.setTimeouts(int32(sessionTimeout / time.Millisecond))
-	// TODO: This context should be passed in by the caller to be the connection lifecycle context.
-	ctx := context.Background()
 
 	go func() {
 		conn.loop(ctx)
