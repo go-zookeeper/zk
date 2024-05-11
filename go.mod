@@ -1,3 +1,2 @@
-module github.com/go-zookeeper/zk
-
+module github.com/andrewwphillips/zk
 go 1.13
