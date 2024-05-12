@@ -68,52 +68,90 @@ func TestIntegration_StateChanges(t *testing.T) {
 
 func TestIntegration_Create(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoErrorf(t, err)
 	defer ts.Stop()
+
 	zk, _, err := ts.ConnectAll()
-	if err != nil {
-		t.Fatalf("Connect returned error: %+v", err)
-	}
+	requireNoErrorf(t, err, "ConnectAll()")
 	defer zk.Close()
 
-	path := "/gozk-test"
+	tests := []struct {
+		name          string
+		createFlags   int32
+		specifiedPath string
+		wantErr       string
+	}{
+		{
+			name:        "valid create persistant",
+			createFlags: FlagPersistent,
+		},
+		{
+			name:        "valid container from Create",
+			createFlags: FlagContainer,
+			// NOTE for v2: we dont need CreateContainer method.
+		},
+		{
+			name:          "invalid path",
+			specifiedPath: "not/valid",
+			wantErr:       "zk: invalid path",
+		},
+		{
+			name:        "invalid create ttl",
+			createFlags: FlagTTL,
+			wantErr:     "zk: invalid flags specified",
+		},
 
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
+		{
+			name:        "invalid flag for create mode",
+			createFlags: 999,
+			wantErr:     "invalid flag value: [999]",
+		},
 	}
-	if p, err := zk.Create(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if p != path {
-		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
-	}
-	if data, stat, err := zk.Get(path); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
+
+	const testPath = "/ttl_znode_tests"
+	// create sub node to create per test in avoiding using the root path.
+	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
+	requireNoErrorf(t, err)
+
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(testPath, fmt.Sprint(idx))
+			if tt.specifiedPath != "" {
+				path = tt.specifiedPath
+			}
+
+			_, err := zk.Create(path, []byte{12}, tt.createFlags, WorldACL(PermAll))
+			if tt.wantErr == "" {
+				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				return
+			}
+
+			// want an error
+			if err == nil {
+				t.Fatalf("did not get expected error: %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
+			}
+		})
 	}
 }
 
 func TestIntegration_CreateTTL(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoErrorf(t, err)
 	defer ts.Stop()
+
 	zk, _, err := ts.ConnectAll()
-	if err != nil {
-		t.Fatalf("Connect returned error: %+v", err)
-	}
+	requireNoErrorf(t, err, "ConnectAll()")
 	defer zk.Close()
 
 	tests := []struct {
-		name         string
-		createFlags  int32
-		giveDuration time.Duration
-		wantErr      string
+		name          string
+		createFlags   int32
+		specifiedPath string
+		giveDuration  time.Duration
+		wantErr       string
 	}{
 		{
 			name:         "valid create ttl",
@@ -124,6 +162,17 @@ func TestIntegration_CreateTTL(t *testing.T) {
 			name:         "valid change detector",
 			createFlags:  5,
 			giveDuration: time.Minute,
+		},
+		{
+			name:          "invalid path",
+			createFlags:   FlagTTL,
+			specifiedPath: "not/valid",
+			wantErr:       "zk: invalid path",
+		},
+		{
+			name:        "invalid container with ttl",
+			createFlags: FlagContainer,
+			wantErr:     "zk: invalid flags specified",
 		},
 		{
 			name:         "invalid flag for create mode",
@@ -141,6 +190,10 @@ func TestIntegration_CreateTTL(t *testing.T) {
 	for idx, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(testPath, fmt.Sprint(idx))
+			if tt.specifiedPath != "" {
+				path = tt.specifiedPath
+			}
+
 			_, err := zk.CreateTTL(path, []byte{12}, tt.createFlags, WorldACL(PermAll), tt.giveDuration)
 			if tt.wantErr == "" {
 				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
@@ -175,9 +228,10 @@ func TestIntegration_CreateContainer(t *testing.T) {
 	defer zk.Close()
 
 	tests := []struct {
-		name        string
-		createFlags int32
-		wantErr     string
+		name          string
+		createFlags   int32
+		specifiedPath string
+		wantErr       string
 	}{
 		{
 			name:        "valid create container",
@@ -187,6 +241,12 @@ func TestIntegration_CreateContainer(t *testing.T) {
 			name:        "valid create container hard coded flag int",
 			createFlags: 4,
 			// container flag, ensure matches ZK Create Mode (change detector test)
+		},
+		{
+			name:          "invalid path",
+			createFlags:   FlagContainer,
+			specifiedPath: "not/valid",
+			wantErr:       "zk: invalid path",
 		},
 		{
 			name:        "invalid create mode",
@@ -228,6 +288,10 @@ func TestIntegration_CreateContainer(t *testing.T) {
 	for idx, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(testPath, fmt.Sprint(idx))
+			if tt.specifiedPath != "" {
+				path = tt.specifiedPath
+			}
+
 			_, err := zk.CreateContainer(path, []byte{12}, tt.createFlags, WorldACL(PermAll))
 			if tt.wantErr == "" {
 				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))

@@ -1064,6 +1064,10 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 		return "", err
 	}
 
+	if createMode.isTTL {
+		return "", ErrInvalidFlags
+	}
+
 	res := &createResponse{}
 	_, err = c.request(opCreate, &CreateRequest{path, data, acl, createMode.toFlag()}, res, nil)
 	if err == ErrConnectionClosed {
