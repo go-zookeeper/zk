@@ -75,13 +75,6 @@ const (
 	StateHasSession = State(101)
 )
 
-const (
-	// FlagEphemeral means the node is ephemeral.
-	FlagEphemeral = 1
-	FlagSequence  = 2
-	FlagTTL       = 4
-)
-
 var (
 	stateNames = map[State]string{
 		StateUnknown:           "StateUnknown",

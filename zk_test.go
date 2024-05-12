@@ -109,46 +109,59 @@ func TestIntegration_CreateTTL(t *testing.T) {
 	}
 	defer zk.Close()
 
-	path := "/gozk-test"
+	tests := []struct {
+		name         string
+		createFlags  int32
+		giveDuration time.Duration
+		wantErr      string
+	}{
+		{
+			name:         "valid create ttl",
+			createFlags:  FlagTTL,
+			giveDuration: time.Minute,
+		},
+		{
+			name:         "valid change detector",
+			createFlags:  5,
+			giveDuration: time.Minute,
+		},
+		{
+			name:         "invalid flag for create mode",
+			createFlags:  999,
+			giveDuration: time.Minute,
+			wantErr:      "invalid flag value: [999]",
+		},
+	}
 
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
-	}
-	if _, err := zk.CreateTTL("", []byte{1, 2, 3, 4}, FlagTTL|FlagEphemeral, WorldACL(PermAll), 60*time.Second); err != ErrInvalidPath {
-		t.Fatalf("Create path check failed")
-	}
-	if _, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll), 60*time.Second); err != ErrInvalidFlags {
-		t.Fatalf("Create flags check failed")
-	}
-	if p, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, FlagTTL|FlagEphemeral, WorldACL(PermAll), 60*time.Second); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if p != path {
-		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
-	}
-	if data, stat, err := zk.Get(path); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
-	}
+	const testPath = "/ttl_znode_tests"
+	// create sub node to create per test in avoiding using the root path.
+	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
+	requireNoError(t, err)
 
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
-	}
-	if p, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, FlagTTL|FlagSequence, WorldACL(PermAll), 60*time.Second); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if !strings.HasPrefix(p, path) {
-		t.Fatalf("Create returned invalid path '%s' are not '%s' with sequence", p, path)
-	} else if data, stat, err := zk.Get(p); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(testPath, fmt.Sprint(idx))
+			_, err := zk.CreateTTL(path, []byte{12}, tt.createFlags, WorldACL(PermAll), tt.giveDuration)
+			if tt.wantErr == "" {
+				requireNoError(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				return
+			}
+
+			// want an error
+			if err == nil {
+				t.Fatalf("did not get expected error: %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
+			}
+		})
 	}
 }
 
+// NOTE: Currently there is not a way to get the znode after creating and
+// asserting it is once mode or another. This means these tests are only testing the
+// path of creation, but is not asserting that the resulting znode is the
+// mode we set with flags.
 func TestIntegration_CreateContainer(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
@@ -161,28 +174,74 @@ func TestIntegration_CreateContainer(t *testing.T) {
 	}
 	defer zk.Close()
 
-	path := "/gozk-test"
+	tests := []struct {
+		name        string
+		createFlags int32
+		wantErr     string
+	}{
+		{
+			name:        "valid create container",
+			createFlags: FlagContainer,
+		},
+		{
+			name:        "valid create container hard coded flag int",
+			createFlags: 4,
+			// container flag, ensure matches ZK Create Mode (change detector test)
+		},
+		{
+			name:        "invalid create mode",
+			createFlags: 999,
+			wantErr:     "invalid flag value: [999]",
+		},
+		{
+			name:        "invalid containers cannot be persistant",
+			createFlags: FlagPersistent,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invalid containers cannot be ephemeral",
+			createFlags: FlagEphemeral,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invalid containers cannot be sequential",
+			createFlags: FlagSequence,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invalid container and sequential",
+			createFlags: FlagContainer | FlagSequence,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invliad TTLs cannot be used with Container znodes",
+			createFlags: FlagTTL,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+	}
 
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
-	}
-	if _, err := zk.CreateContainer("", []byte{1, 2, 3, 4}, FlagTTL, WorldACL(PermAll)); err != ErrInvalidPath {
-		t.Fatalf("Create path check failed")
-	}
-	if _, err := zk.CreateContainer(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != ErrInvalidFlags {
-		t.Fatalf("Create flags check failed")
-	}
-	if p, err := zk.CreateContainer(path, []byte{1, 2, 3, 4}, FlagTTL, WorldACL(PermAll)); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if p != path {
-		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
-	}
-	if data, stat, err := zk.Get(path); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
+	const testPath = "/container_test_znode"
+	// create sub node to create per test in avoiding using the root path.
+	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
+	requireNoError(t, err)
+
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(testPath, fmt.Sprint(idx))
+			_, err := zk.CreateContainer(path, []byte{12}, tt.createFlags, WorldACL(PermAll))
+			if tt.wantErr == "" {
+				requireNoError(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				return
+			}
+
+			// want an error
+			if err == nil {
+				t.Fatalf("did not get expected error: %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
+			}
+		})
 	}
 }
 

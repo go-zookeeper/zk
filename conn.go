@@ -1055,12 +1055,17 @@ func (c *Conn) Set(path string, data []byte, version int32) (*Stat, error) {
 // same as the input, for example when creating a sequence znode the returned path
 // will be the input path with a sequence number appended.
 func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string, error) {
-	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
+	createMode, err := parseCreateMode(flags)
+	if err != nil {
+		return "", err
+	}
+
+	if err := validatePath(path, createMode.sequential); err != nil {
 		return "", err
 	}
 
 	res := &createResponse{}
-	_, err := c.request(opCreate, &CreateRequest{path, data, acl, flags}, res, nil)
+	_, err = c.request(opCreate, &CreateRequest{path, data, acl, createMode.toFlag()}, res, nil)
 	if err == ErrConnectionClosed {
 		return "", err
 	}
@@ -1068,30 +1073,45 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 }
 
 // CreateContainer creates a container znode and returns the path.
-func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL) (string, error) {
-	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
+//
+// Containers cannot be ephemeral or sequential, or have TTLs.
+// Ensure that we reject flags for TTL, Sequence, and Ephemeral.
+func (c *Conn) CreateContainer(path string, data []byte, flag int32, acl []ACL) (string, error) {
+	createMode, err := parseCreateMode(flag)
+	if err != nil {
 		return "", err
 	}
-	if flags&FlagTTL != FlagTTL {
+
+	if err := validatePath(path, createMode.sequential); err != nil {
+		return "", err
+	}
+
+	if !createMode.isContainer {
 		return "", ErrInvalidFlags
 	}
 
 	res := &createResponse{}
-	_, err := c.request(opCreateContainer, &CreateContainerRequest{path, data, acl, flags}, res, nil)
+	_, err = c.request(opCreateContainer, &CreateRequest{path, data, acl, createMode.toFlag()}, res, nil)
 	return res.Path, err
 }
 
 // CreateTTL creates a TTL znode, which will be automatically deleted by server after the TTL.
-func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl time.Duration) (string, error) {
-	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
+func (c *Conn) CreateTTL(path string, data []byte, flag int32, acl []ACL, ttl time.Duration) (string, error) {
+	createMode, err := parseCreateMode(flag)
+	if err != nil {
 		return "", err
 	}
-	if flags&FlagTTL != FlagTTL {
+
+	if err := validatePath(path, createMode.sequential); err != nil {
+		return "", err
+	}
+
+	if !createMode.isTTL {
 		return "", ErrInvalidFlags
 	}
 
 	res := &createResponse{}
-	_, err := c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, flags, ttl.Milliseconds()}, res, nil)
+	_, err = c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, createMode.toFlag(), ttl.Milliseconds()}, res, nil)
 	return res.Path, err
 }
 
