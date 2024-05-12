@@ -136,14 +136,14 @@ func TestIntegration_CreateTTL(t *testing.T) {
 	const testPath = "/ttl_znode_tests"
 	// create sub node to create per test in avoiding using the root path.
 	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
 	for idx, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(testPath, fmt.Sprint(idx))
 			_, err := zk.CreateTTL(path, []byte{12}, tt.createFlags, WorldACL(PermAll), tt.giveDuration)
 			if tt.wantErr == "" {
-				requireNoError(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
 				return
 			}
 
@@ -223,14 +223,14 @@ func TestIntegration_CreateContainer(t *testing.T) {
 	const testPath = "/container_test_znode"
 	// create sub node to create per test in avoiding using the root path.
 	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
 	for idx, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(testPath, fmt.Sprint(idx))
 			_, err := zk.CreateContainer(path, []byte{12}, tt.createFlags, WorldACL(PermAll))
 			if tt.wantErr == "" {
-				requireNoError(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
 				return
 			}
 
