@@ -1205,6 +1205,9 @@ func requireMinimumZkVersion(t *testing.T, minimum string) {
 
 	minimumV, actualV := parseFn(minimum), parseFn(actualVersionStr)
 	for i, p := range minimumV {
+		if len(actualV) <= i {
+			break
+		}
 		if actualV[i] < p {
 			t.Skipf("zookeeper required min version not met; requires: %q, actual: %q", minimum, actualVersionStr)
 		}
