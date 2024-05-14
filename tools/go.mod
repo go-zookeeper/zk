@@ -1,6 +1,6 @@
 module github.com/Shopify/zk/tools
 
-go 1.22
+go 1.22.1
 
 require (
 	github.com/golangci/golangci-lint v1.58.1
