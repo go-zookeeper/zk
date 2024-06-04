@@ -99,6 +99,7 @@ type Conn struct {
 	watchers     map[watchPathType][]chan Event
 	watchersLock sync.Mutex
 	closeChan    chan struct{} // channel to tell send loop stop
+	sessionLock  sync.RWMutex
 
 	// Debug (used by unit tests)
 	reconnectLatch   chan struct{}
@@ -310,6 +311,15 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 	}
 }
 
+// WithSessionIdAndPasswd sets the session id and password to be used
+// for the first connection attempt
+func WithSessionIdAndPasswd(sessionID int64, passwd []byte) connOption {
+	return func(c *Conn) {
+		c.sessionID = sessionID
+		c.passwd = passwd
+	}
+}
+
 // Close will submit a close request with ZK and signal the connection to stop
 // sending and receiving packets.
 func (c *Conn) Close() {
@@ -330,7 +340,16 @@ func (c *Conn) State() State {
 
 // SessionID returns the current session id of the connection.
 func (c *Conn) SessionID() int64 {
-	return atomic.LoadInt64(&c.sessionID)
+	c.sessionLock.RLock()
+	defer c.sessionLock.RUnlock()
+	return c.sessionID
+}
+
+// SessionPassword returns the current session password of the connection.
+func (c *Conn) SessionPasswd() []byte {
+	c.sessionLock.RLock()
+	defer c.sessionLock.RUnlock()
+	return c.passwd
 }
 
 // SetLogger sets the logger to be used for printing errors.
@@ -664,7 +683,7 @@ func (c *Conn) authenticate() error {
 		LastZxidSeen:    c.lastZxid,
 		TimeOut:         c.sessionTimeoutMs,
 		SessionID:       c.SessionID(),
-		Passwd:          c.passwd,
+		Passwd:          c.SessionPasswd(),
 	})
 	if err != nil {
 		return err
@@ -703,16 +722,20 @@ func (c *Conn) authenticate() error {
 		return err
 	}
 	if r.SessionID == 0 {
-		atomic.StoreInt64(&c.sessionID, int64(0))
+		c.sessionLock.Lock()
+		c.sessionID = 0
 		c.passwd = emptyPassword
+		c.sessionLock.Unlock()
 		c.lastZxid = 0
 		c.setState(StateExpired)
 		return ErrSessionExpired
 	}
 
-	atomic.StoreInt64(&c.sessionID, r.SessionID)
-	c.setTimeouts(r.TimeOut)
+	c.sessionLock.Lock()
+	c.sessionID = r.SessionID
 	c.passwd = r.Passwd
+	c.sessionLock.Unlock()
+	c.setTimeouts(r.TimeOut)
 	c.setState(StateHasSession)
 
 	return nil
