@@ -86,3 +86,9 @@ func (hp *DNSHostProvider) Connected() {
 	defer hp.mu.Unlock()
 	hp.last = hp.curr
 }
+
+// UpdateServerList is called when HostProvider is abnormal.
+// Update the list of servers.
+func (hp *DNSHostProvider) UpdateServerList(servers []string) error {
+	return hp.Init(servers)
+}
