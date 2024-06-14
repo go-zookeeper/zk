@@ -125,3 +125,53 @@ func TestParseSeq(t *testing.T) {
 		t.Fatalf("Expected 3 instead of %d", seq)
 	}
 }
+
+func TestParentMultiLevelLock(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Stop()
+
+	zk, _, err := ts.ConnectAll()
+	if err != nil {
+		t.Fatalf("Connect returned error: %+v", err)
+	}
+	defer zk.Close()
+
+	acls := WorldACL(PermAll)
+	path := "/test-multi-level"
+	if p, err := zk.Create(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
+		t.Fatalf("Create returned error: %+v", err)
+	} else if p != path {
+		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
+	}
+	// create path with integer leaf
+	path = "/test-multi-level/1"
+	if p, err := zk.Create(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
+		t.Fatalf("Create returned error: %+v", err)
+	} else if p != path {
+		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
+	}
+	//create node at the parent of /1 node
+	l := NewLock(zk, "/test-multi-level", acls)
+
+	defer zk.Delete("/test-multi-level", -1) // Clean up what we've created for this test
+	defer zk.Delete("/test-multi-level/1", -1)
+
+	if err := l.Lock(); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Unlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// create lock again to see that it works again
+	newLock := NewLock(zk, "/test-multi-level", acls)
+	if err := newLock.Lock(); err != nil {
+		t.Fatal(err)
+	}
+	if err := newLock.Unlock(); err != nil {
+		t.Fatal(err)
+	}
+}
