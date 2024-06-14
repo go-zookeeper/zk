@@ -27,6 +27,7 @@ const (
 	opCheck           = 13
 	opMulti           = 14
 	opReconfig        = 16
+	opRemoveWatches   = 18
 	opCreateContainer = 19
 	opCreateTTL       = 21
 	opClose           = -11
@@ -131,6 +132,7 @@ var (
 	ErrSessionMoved            = errors.New("zk: session moved to another server, so operation is ignored")
 	ErrReconfigDisabled        = errors.New("attempts to perform a reconfiguration operation when reconfiguration feature is disabled")
 	ErrBadArguments            = errors.New("invalid arguments")
+	ErrNoWatcher               = errors.New("zk: no watchers found")
 	// ErrInvalidCallback         = errors.New("zk: invalid callback specified")
 
 	errCodeToError = map[ErrCode]error{
@@ -151,6 +153,7 @@ var (
 		errSessionMoved:      ErrSessionMoved,
 		errZReconfigDisabled: ErrReconfigDisabled,
 		errBadArguments:      ErrBadArguments,
+		errNoWatcher:         ErrNoWatcher,
 	}
 )
 
@@ -188,6 +191,7 @@ const (
 	errClosing                 ErrCode = -116
 	errNothing                 ErrCode = -117
 	errSessionMoved            ErrCode = -118
+	errNoWatcher               ErrCode = -121
 	// Attempts to perform a reconfiguration operation when reconfiguration feature is disabled
 	errZReconfigDisabled ErrCode = -123
 )
@@ -223,6 +227,7 @@ var (
 		opCheck:           "check",
 		opMulti:           "multi",
 		opReconfig:        "reconfig",
+		opRemoveWatches:   "removeWatches",
 		opClose:           "close",
 		opSetAuth:         "setAuth",
 		opSetWatches:      "setWatches",
@@ -264,4 +269,14 @@ var (
 		ModeFollower:   "follower",
 		ModeStandalone: "standalone",
 	}
+)
+
+// RemoveWatcher
+// https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/Watcher.java#L191
+type WatcherType int32
+
+const (
+	watcherTypeChildren WatcherType = iota + 1
+	watcherTypeData
+	watcherTypeAny
 )
