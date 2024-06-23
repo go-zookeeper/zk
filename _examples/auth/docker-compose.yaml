@@ -1,0 +1,43 @@
+name: zoo-kerberos-app
+
+services:
+  kerberos-server:
+    build: 
+      context: ./../docker/kerberos-server
+      dockerfile: Dockerfile
+    hostname: krb-srv-host
+    ports:
+      - 
+    volumes:
+      - shared-tmpfs:/krb
+
+  zoo1:
+    build: 
+      context: ./../docker/zk-krb
+      dockerfile: Dockerfile
+    restart: always
+    hostname: zoo1
+    ports:
+      - 2181:2181
+    environment:
+      ZOO_CFG_EXTRA: "authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider kerberos.removeHostFromPrincipal=true jaasLoginRenew=3600000"
+      JVMFLAGS: "-Djava.security.auth.login.config=/conf/jaas.conf -Dzookeeper.server.principal=zookeeper/localhost@EXAMPLE.COM -Dsun.security.krb5.debug=true"
+    volumes:
+      - shared-tmpfs:/krb
+    depends_on:
+      - kerberos-server
+
+  zoo-client:
+    build:
+      context: ./../docker/zk-client
+      dockerfile: Dockerfile
+    environment:
+      JVMFLAGS: "-Djava.security.auth.login.config=/conf/jaas.conf -Dzookeeper.server.principal=zookeeper/localhost@EXAMPLE.COM -Dsun.security.krb5.debug=true"
+    volumes:
+      - shared-tmpfs:/krb
+    depends_on:
+      - zoo1
+      - kerberos-server
+
+volumes:
+  shared-tmpfs:
