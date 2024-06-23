@@ -1,10 +1,17 @@
 #!/bin/bash
+set -xe
 
 readonly REALM="EXAMPLE.COM"
-
 readonly KRB_PATH="/krb"
+
+# server(s) 
 readonly ZK_SERVER_PRINICPAL="zookeeper/localhost"
 readonly ZK_SERVER_KEYTAB="${KRB_PATH}/zookeeper.keytab"
+
+# client(s)
+readonly ZK_CLIENT_PRINICPAL="myzkclient"
+readonly ZK_CLIENT_KEYTAB="${KRB_PATH}/myzkclient.keytab"
+
 
 KADMIN_PRINCIPAL_FULL=$KADMIN_PRINCIPAL@$REALM
 
@@ -12,7 +19,6 @@ echo "REALM: $REALM"
 echo "KADMIN_PRINCIPAL_FULL: $KADMIN_PRINCIPAL_FULL"
 echo "KADMIN_PASSWORD: $KADMIN_PASSWORD"
 echo ""
-
 
 tee /etc/krb5.conf <<EOF
 [libdefaults]
@@ -25,13 +31,9 @@ tee /etc/krb5.conf <<EOF
 	$REALM = {
 		kdc_ports = 88,750
 		kadmind_port = 749
-		kdc = zoo1
-		admin_server = zoo1
+		kdc = localhost
+		admin_server = localhost
 	}
-
-[domain_realm]
- .zoo1 = EXAMPLE.COM
- zoo1 = EXAMPLE.COM
 EOF
 
 tee /etc/krb5kdc/kdc.conf <<EOF
@@ -41,18 +43,6 @@ tee /etc/krb5kdc/kdc.conf <<EOF
 		max_renewable_life = 7d 0h 0m 0s
 		default_principal_flags = +preauth
 	}
-EOF
-
-tee /conf/jaas.conf <<EOF
-Server {
-       com.sun.security.auth.module.Krb5LoginModule required
-       useKeyTab=true
-       keyTab="${ZK_SERVER_KEYTAB}"
-       storeKey=true
-       useTicketCache=false
-       debug=true
-       principal="${ZK_SERVER_PRINICPAL}@EXAMPLE.COM";
-};
 EOF
 
 tee /etc/krb5kdc/kadm5.acl <<EOF
@@ -68,7 +58,10 @@ $MASTER_PASSWORD
 EOF
 echo ""
 
-rm -rf "${KRB_PATH}/"
+# clean from any previous run(s). with docker you never really know. 
+rm -rf "${ZK_CLIENT_KEYTAB}"
+rm -rf "${ZK_SERVER_KEYTAB}"
+
 mkdir -p "${KRB_PATH}"
 
 echo "Adding $KADMIN_PRINCIPAL principal"
@@ -80,29 +73,18 @@ kadmin.local -q "delete_principal -force noPermissions@$REALM"
 kadmin.local -q "addprinc -pw $KADMIN_PASSWORD noPermissions@$REALM"
 echo ""
 
-echo "Add Zookeeper Host principal"
-kadmin.local -q "addprinc -randkey zookeeper/localhost@$REALM"
-kadmin.local -q "ktadd -k ${KRB_PATH}/myzkclient.keytab zookeeper/localhost"
-kadmin.local -q "ktadd -k ${ZK_SERVER_KEYTAB} zookeeper/localhost"
+echo "Add Zookeeper Host principal : this one must match -Dzookeeper.server.principal the client uses."
+kadmin.local -q "addprinc -randkey ${ZK_SERVER_PRINICPAL}@$REALM"
+kadmin.local -q "ktadd -k ${ZK_SERVER_KEYTAB} ${ZK_SERVER_PRINICPAL}"
 echo ""
-
-kadmin.local -q "addprinc -randkey zookeeper/null@$REALM"
-kadmin.local -q "ktadd -k ${KRB_PATH}/myzkclient.keytab zookeeper/null@$REALM"
-kadmin.local -q "ktadd -k ${ZK_SERVER_KEYTAB} zookeeper/null@$REALM"
 
 echo "Add a Zookeeper client principal"
-kadmin.local -q "addprinc -randkey myzkclient"
-kadmin.local -q "ktadd -k ${KRB_PATH}/myzkclient.keytab myzkclient"
+kadmin.local -q "addprinc -randkey ${ZK_CLIENT_PRINICPAL}"
+kadmin.local -q "ktadd -k ${ZK_CLIENT_KEYTAB} ${ZK_CLIENT_PRINICPAL}"
 echo ""
-
-# zookeeper user is made form base zk docker image
-chown -R  zookeeper.zookeeper ${KRB_PATH}
 
 echo "Debug listing pricipals" 
 kadmin.local -q "listprincs"
 
 krb5kdc 
-kadmind
-
-# upstream zookeeper entrypoint.
-exec /docker-entrypoint.sh "$@"
+kadmind -nofork

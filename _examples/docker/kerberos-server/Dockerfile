@@ -16,4 +16,4 @@ ENV KADMIN_PASSWORD ${KADMIN_PASSWORD:-start123}
 
 ADD	./kerberos-entrypoint.sh /
 
-ENTRYPOINT ["/kerberos-entrypoint.sh"]
+ENTRYPOINT [ "/kerberos-entrypoint.sh" ]

@@ -1,29 +1,27 @@
 #!/bin/bash
-set -x
+set -ex
 
 readonly REALM="EXAMPLE.COM"
-
 readonly KRB_PATH="/krb"
+
+readonly KRB_SRV_HOSTNAME=${KRB_SRV_HOSTNAME:-krb-srv-host}
+
+# client(s)
 readonly ZK_CLIENT_PRINICPAL="myzkclient"
-readonly ZK_CLIENT_KEYTAB="${KRB_PATH}/${ZK_CLIENT_PRINICPAL}.keytab"
+readonly ZK_CLIENT_KEYTAB="${KRB_PATH}/myzkclient.keytab"
 
 tee /etc/krb5.conf <<EOF
 [libdefaults]
     default_realm = $REALM
-    dns_lookup_realm = false
-    rdns = false
 
 [realms]
 	$REALM = {
-		kdc = zoo1
-        admin_server = zoo1
+		kdc = ${KRB_SRV_HOSTNAME}
+        admin_server = ${KRB_SRV_HOSTNAME}
 	}
-
-[domain_realm]
- .zoo1 = EXAMPLE.COM
- zoo1 = EXAMPLE.COM
 EOF
 
+# Used for the zkCli.sh toolchain. Demonstrate the working standard tooling. 
 tee /conf/jaas.conf <<EOF
 Client {
        com.sun.security.auth.module.Krb5LoginModule required
@@ -32,10 +30,12 @@ Client {
        storeKey=true
        useTicketCache=false
        debug=true
-       serviceName="zookeeper"
-       principal="$ZK_CLIENT_PRINICPAL";
+       principal="${ZK_CLIENT_PRINICPAL}";
 };
 EOF
+
+# zookeeper user is made form base zk docker image
+chown zookeeper.zookeeper ${ZK_CLIENT_KEYTAB}
 
 # upstream zookeeper entrypoint.
 exec /docker-entrypoint.sh "$@"
