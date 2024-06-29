@@ -63,7 +63,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 
 	for serverN := 0; serverN < size; serverN++ {
 		srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv%d", serverN+1))
-		requireNoError(t, os.Mkdir(srvPath, 0700), "failed to make server path")
+		requireNoErrorf(t, os.Mkdir(srvPath, 0700), "failed to make server path")
 
 		port := startPort + serverN*3
 		cfg := ServerConfig{
@@ -84,20 +84,20 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 
 		cfgPath := filepath.Join(srvPath, _testConfigName)
 		fi, err := os.Create(cfgPath)
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
-		requireNoError(t, cfg.Marshall(fi))
+		requireNoErrorf(t, cfg.Marshall(fi))
 		fi.Close()
 
 		fi, err = os.Create(filepath.Join(srvPath, _testMyIDFileName))
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		_, err = fmt.Fprintf(fi, "%d\n", serverN+1)
 		fi.Close()
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		srv, err := NewIntegrationTestServer(t, cfgPath, stdout, stderr)
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		if err := srv.Start(); err != nil {
 			return nil, err
@@ -247,7 +247,7 @@ func (tc *TestCluster) StopAllServers() error {
 	return nil
 }
 
-func requireNoError(t *testing.T, err error, msgAndArgs ...interface{}) {
+func requireNoErrorf(t *testing.T, err error, msgAndArgs ...interface{}) {
 	t.Helper()
 
 	if err != nil {

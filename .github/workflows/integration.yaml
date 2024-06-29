@@ -1,5 +1,11 @@
 name: integration_test
-on: [push, pull_request]
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
 
 jobs:
   integration_test:
@@ -10,7 +16,7 @@ jobs:
         go-version: ['oldstable', 'stable']
     runs-on: ubuntu-latest
     steps:
-      - name: Go ${{ matrix.go }} setup
+      - name: Go ${{ matrix.go-version }} setup
         uses: actions/setup-go@v4
         with:
             go-version: ${{ matrix.go-version }} 
@@ -28,6 +34,9 @@ jobs:
         run: make test ZK_VERSION=${{ matrix.zk-version }}
 
       - name: Upload code coverage
-        uses: codecov/codecov-action@v1
+        # only upload one result from the matrix. 
+        if: ${{ strategy.job-index == 0 }}
+        uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }} # required
           file: ./profile.cov
