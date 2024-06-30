@@ -3,6 +3,7 @@ package zk
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -152,60 +153,66 @@ func TestIntegration_CreateTTL(t *testing.T) {
 		specifiedPath string
 		giveDuration  time.Duration
 		wantErr       string
+		wantErrIs     error
 	}{
 		{
-			name:         "valid create ttl",
-			createFlags:  FlagTTL,
-			giveDuration: time.Minute,
+			name:          "valid create ttl",
+			specifiedPath: "/test-valid-create-ttl",
+			createFlags:   FlagTTL,
+			giveDuration:  time.Minute,
 		},
 		{
-			name:         "valid change detector",
-			createFlags:  5,
-			giveDuration: time.Minute,
+			name:          "valid change detector",
+			specifiedPath: "/test-valid-change",
+			createFlags:   5,
+			giveDuration:  time.Minute,
 		},
 		{
 			name:          "invalid path",
 			createFlags:   FlagTTL,
 			specifiedPath: "not/valid",
 			wantErr:       "zk: invalid path",
+			wantErrIs:     ErrInvalidPath,
 		},
 		{
-			name:        "invalid container with ttl",
-			createFlags: FlagContainer,
-			wantErr:     "zk: invalid flags specified",
+			name:          "invalid container with ttl",
+			specifiedPath: "/test-invalid-flags",
+			createFlags:   FlagContainer,
+			wantErr:       "zk: invalid flags specified",
+			wantErrIs:     ErrInvalidFlags,
 		},
 		{
-			name:         "invalid flag for create mode",
-			createFlags:  999,
-			giveDuration: time.Minute,
-			wantErr:      "invalid flag value: [999]",
+			name:          "invalid flag for create mode",
+			specifiedPath: "/test-invalid-mode",
+			createFlags:   999,
+			giveDuration:  time.Minute,
+			wantErr:       "invalid flag value: [999]",
 		},
 	}
 
-	const testPath = "/ttl_znode_tests"
-	// create sub node to create per test in avoiding using the root path.
-	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
-	requireNoErrorf(t, err)
-
-	for idx, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path := filepath.Join(testPath, fmt.Sprint(idx))
-			if tt.specifiedPath != "" {
-				path = tt.specifiedPath
+			if tt.specifiedPath == "" {
+				t.Fatalf("path for test required: %v", tt.name)
 			}
 
-			_, err := zk.CreateTTL(path, []byte{12}, tt.createFlags, WorldACL(PermAll), tt.giveDuration)
+			_, err := zk.CreateTTL(tt.specifiedPath, []byte{12}, tt.createFlags, WorldACL(PermAll), tt.giveDuration)
 			if tt.wantErr == "" {
-				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				requireNoErrorf(t, err,
+					fmt.Sprintf("error not expected: path; %q; flags %v", tt.specifiedPath, tt.createFlags))
 				return
 			}
-
 			// want an error
+			if tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error expected Is: %q", tt.wantErr)
+				}
+			}
 			if err == nil {
-				t.Fatalf("did not get expected error: %q", tt.wantErr)
+				t.Errorf("did not get expected error: %q", tt.wantErr)
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
+				t.Errorf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
 			}
 		})
 	}

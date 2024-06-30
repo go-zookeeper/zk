@@ -2,6 +2,7 @@ package zk
 
 import "fmt"
 
+// TODO: (v2) enum type for CreateMode API.
 const (
 	FlagPersistent                  = 0
 	FlagEphemeral                   = 1
@@ -13,15 +14,11 @@ const (
 )
 
 type createMode struct {
-	flag        int32
-	ephemeral   bool
-	sequential  bool
-	isContainer bool
-	isTTL       bool
-}
-
-func (cm *createMode) toFlag() int32 {
-	return cm.flag
+	flag         int32
+	isEphemeral  bool
+	isSequential bool
+	isContainer  bool
+	isTTL        bool
 }
 
 // parsing a flag integer into the CreateMode needed to call the correct

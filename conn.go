@@ -1060,16 +1060,16 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 		return "", err
 	}
 
-	if err := validatePath(path, createMode.sequential); err != nil {
+	if err := validatePath(path, createMode.isSequential); err != nil {
 		return "", err
 	}
 
 	if createMode.isTTL {
-		return "", ErrInvalidFlags
+		return "", fmt.Errorf("Create with TTL flag disallowed :%w", ErrInvalidFlags)
 	}
 
 	res := &createResponse{}
-	_, err = c.request(opCreate, &CreateRequest{path, data, acl, createMode.toFlag()}, res, nil)
+	_, err = c.request(opCreate, &CreateRequest{path, data, acl, createMode.flag}, res, nil)
 	if err == ErrConnectionClosed {
 		return "", err
 	}
@@ -1086,16 +1086,16 @@ func (c *Conn) CreateContainer(path string, data []byte, flag int32, acl []ACL) 
 		return "", err
 	}
 
-	if err := validatePath(path, createMode.sequential); err != nil {
+	if err := validatePath(path, createMode.isSequential); err != nil {
 		return "", err
 	}
 
 	if !createMode.isContainer {
-		return "", ErrInvalidFlags
+		return "", fmt.Errorf("CreateContainer requires container flag :%w", ErrInvalidFlags)
 	}
 
 	res := &createResponse{}
-	_, err = c.request(opCreateContainer, &CreateRequest{path, data, acl, createMode.toFlag()}, res, nil)
+	_, err = c.request(opCreateContainer, &CreateRequest{path, data, acl, createMode.flag}, res, nil)
 	return res.Path, err
 }
 
@@ -1106,16 +1106,16 @@ func (c *Conn) CreateTTL(path string, data []byte, flag int32, acl []ACL, ttl ti
 		return "", err
 	}
 
-	if err := validatePath(path, createMode.sequential); err != nil {
+	if err := validatePath(path, createMode.isSequential); err != nil {
 		return "", err
 	}
 
 	if !createMode.isTTL {
-		return "", ErrInvalidFlags
+		return "", fmt.Errorf("CreateTTL requires TTL flag :%w", ErrInvalidFlags)
 	}
 
 	res := &createResponse{}
-	_, err = c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, createMode.toFlag(), ttl.Milliseconds()}, res, nil)
+	_, err = c.request(opCreateTTL, &CreateTTLRequest{path, data, acl, createMode.flag, ttl.Milliseconds()}, res, nil)
 	return res.Path, err
 }
 
