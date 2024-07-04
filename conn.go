@@ -1065,7 +1065,7 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 	}
 
 	if createMode.isTTL {
-		return "", fmt.Errorf("Create with TTL flag disallowed :%w", ErrInvalidFlags)
+		return "", fmt.Errorf("Create with TTL flag disallowed: %w", ErrInvalidFlags)
 	}
 
 	res := &createResponse{}
@@ -1091,7 +1091,7 @@ func (c *Conn) CreateContainer(path string, data []byte, flag int32, acl []ACL) 
 	}
 
 	if !createMode.isContainer {
-		return "", fmt.Errorf("CreateContainer requires container flag :%w", ErrInvalidFlags)
+		return "", fmt.Errorf("CreateContainer requires container flag: %w", ErrInvalidFlags)
 	}
 
 	res := &createResponse{}
@@ -1111,7 +1111,7 @@ func (c *Conn) CreateTTL(path string, data []byte, flag int32, acl []ACL, ttl ti
 	}
 
 	if !createMode.isTTL {
-		return "", fmt.Errorf("CreateTTL requires TTL flag :%w", ErrInvalidFlags)
+		return "", fmt.Errorf("CreateTTL requires TTL flag: %w", ErrInvalidFlags)
 	}
 
 	res := &createResponse{}
