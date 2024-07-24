@@ -1,16 +1,17 @@
 package zk
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"testing"
 	"time"
 )
 
-// localhostLookupHost is a test replacement for net.LookupHost that
-// always returns 127.0.0.1
-func localhostLookupHost(host string) ([]string, error) {
-	return []string{"127.0.0.1"}, nil
+func withLookupHost(lookupFn func(context.Context, string) ([]string, error)) DNSHostProviderOption {
+	return func(provider *DNSHostProvider) {
+		provider.lookupHost = lookupFn
+	}
 }
 
 // TestDNSHostProviderCreate is just like TestCreate, but with an
@@ -24,7 +25,15 @@ func TestIntegration_DNSHostProviderCreate(t *testing.T) {
 
 	port := ts.Servers[0].Port
 	server := fmt.Sprintf("foo.example.com:%d", port)
-	hostProvider := &DNSHostProvider{lookupHost: localhostLookupHost}
+	hostProvider := NewDNSHostProvider(
+		withLookupHost(func (ctx context.Context, host string) ([]string, error) {
+			if _, ok := ctx.Deadline(); !ok {
+				t.Fatal("No lookup context deadline set")
+			}
+			return []string{"127.0.0.1"}, nil
+		}),
+	)
+
 	zk, _, err := Connect([]string{server}, time.Second*15, WithHostProvider(hostProvider))
 	if err != nil {
 		t.Fatalf("Connect returned error: %+v", err)
@@ -103,9 +112,11 @@ func TestIntegration_DNSHostProviderReconnect(t *testing.T) {
 	}
 	defer ts.Stop()
 
-	innerHp := &DNSHostProvider{lookupHost: func(host string) ([]string, error) {
-		return []string{"192.0.2.1", "192.0.2.2", "192.0.2.3"}, nil
-	}}
+	innerHp := NewDNSHostProvider(
+		withLookupHost(func(_ context.Context, host string) ([]string, error) {
+			return []string{"192.0.2.1", "192.0.2.2", "192.0.2.3"}, nil
+		}),
+	)
 	ports := make([]int, 0, len(ts.Servers))
 	for _, server := range ts.Servers {
 		ports = append(ports, server.Port)
@@ -172,9 +183,11 @@ func TestIntegration_DNSHostProviderReconnect(t *testing.T) {
 func TestDNSHostProviderRetryStart(t *testing.T) {
 	t.Parallel()
 
-	hp := &DNSHostProvider{lookupHost: func(host string) ([]string, error) {
-		return []string{"192.0.2.1", "192.0.2.2", "192.0.2.3"}, nil
-	}}
+	hp := NewDNSHostProvider(
+		withLookupHost(func(_ context.Context, host string) ([]string, error) {
+			return []string{"192.0.2.1", "192.0.2.2", "192.0.2.3"}, nil
+		}),
+	)
 
 	if err := hp.Init([]string{"foo.example.com:12345"}); err != nil {
 		t.Fatal(err)
@@ -220,5 +233,13 @@ func TestDNSHostProviderRetryStart(t *testing.T) {
 		if td.callConnected {
 			hp.Connected()
 		}
+	}
+}
+
+func TestNewDNSHostProvider(t *testing.T) {
+	want := 5*time.Second
+	provider := NewDNSHostProvider(WithLookupTimeout(want))
+	if provider.lookupTimeout != want {
+		t.Fatalf("expected lookup timeout to be %v, got %v", want, provider.lookupTimeout)
 	}
 }
