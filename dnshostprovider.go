@@ -10,15 +10,28 @@ import (
 
 const _defaultLookupTimeout = 3 * time.Second
 
+type lookupHostFn func(context.Context, string) ([]string, error)
+
 // DNSHostProviderOption is an option for the DNSHostProvider.
-type DNSHostProviderOption func (*DNSHostProvider)
+type DNSHostProviderOption interface {
+	apply(*DNSHostProvider)
+}
+
+type lookupTimeoutOption struct {
+	timeout time.Duration
+}
 
 // WithLookupTimeout returns a DNSHostProviderOption that sets the lookup timeout.
 func WithLookupTimeout(timeout time.Duration) DNSHostProviderOption {
-	return func(provider *DNSHostProvider) {
-		provider.lookupTimeout = timeout
+	return lookupTimeoutOption{
+		timeout: timeout,
 	}
 }
+
+func (o lookupTimeoutOption) apply(provider *DNSHostProvider) {
+	provider.lookupTimeout = o.timeout
+}
+
 
 // DNSHostProvider is the default HostProvider. It currently matches
 // the Java StaticHostProvider, resolving hosts from DNS once during
@@ -30,7 +43,7 @@ type DNSHostProvider struct {
 	curr       int
 	last       int
 	lookupTimeout time.Duration
-	lookupHost func(context.Context, string) ([]string, error) // Override of net.LookupHost, for testing.
+	lookupHost lookupHostFn // Override of net.LookupHost, for testing.
 }
 
 // NewDNSHostProvider creates a new DNSHostProvider with the given options.

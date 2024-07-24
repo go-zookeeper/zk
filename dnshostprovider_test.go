@@ -8,10 +8,18 @@ import (
 	"time"
 )
 
-func withLookupHost(lookupFn func(context.Context, string) ([]string, error)) DNSHostProviderOption {
-	return func(provider *DNSHostProvider) {
-		provider.lookupHost = lookupFn
+type lookupHostOption struct {
+	lookupFn lookupHostFn
+}
+
+func withLookupHost(lookupFn lookupHostFn) DNSHostProviderOption {
+	return lookupHostOption{
+		lookupFn: lookupFn,
 	}
+}
+
+func (o lookupHostOption) apply(provider *DNSHostProvider) {
+	provider.lookupHost = o.lookupFn
 }
 
 // TestDNSHostProviderCreate is just like TestCreate, but with an
