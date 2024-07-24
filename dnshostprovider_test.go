@@ -34,7 +34,7 @@ func TestIntegration_DNSHostProviderCreate(t *testing.T) {
 	port := ts.Servers[0].Port
 	server := fmt.Sprintf("foo.example.com:%d", port)
 	hostProvider := NewDNSHostProvider(
-		withLookupHost(func (ctx context.Context, host string) ([]string, error) {
+		withLookupHost(func(ctx context.Context, host string) ([]string, error) {
 			if _, ok := ctx.Deadline(); !ok {
 				t.Fatal("No lookup context deadline set")
 			}
@@ -245,7 +245,7 @@ func TestDNSHostProviderRetryStart(t *testing.T) {
 }
 
 func TestNewDNSHostProvider(t *testing.T) {
-	want := 5*time.Second
+	want := 5 * time.Second
 	provider := NewDNSHostProvider(WithLookupTimeout(want))
 	if provider.lookupTimeout != want {
 		t.Fatalf("expected lookup timeout to be %v, got %v", want, provider.lookupTimeout)

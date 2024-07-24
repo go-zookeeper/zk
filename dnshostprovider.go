@@ -1,8 +1,8 @@
 package zk
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -37,12 +37,12 @@ func (o lookupTimeoutOption) apply(provider *DNSHostProvider) {
 // the call to Init.  It could be easily extended to re-query DNS
 // periodically or if there is trouble connecting.
 type DNSHostProvider struct {
-	mu         sync.Mutex // Protects everything, so we can add asynchronous updates later.
-	servers    []string
-	curr       int
-	last       int
+	mu            sync.Mutex // Protects everything, so we can add asynchronous updates later.
+	servers       []string
+	curr          int
+	last          int
 	lookupTimeout time.Duration
-	lookupHost lookupHostFn // Override of net.LookupHost, for testing.
+	lookupHost    lookupHostFn // Override of net.LookupHost, for testing.
 }
 
 // NewDNSHostProvider creates a new DNSHostProvider with the given options.
