@@ -50,7 +50,7 @@ type DNSHostProvider struct {
 func NewDNSHostProvider(options ...DNSHostProviderOption) *DNSHostProvider {
 	var provider DNSHostProvider
 	for _, option := range options {
-		option(&provider)
+		option.apply(&provider)
 	}
 	return &provider
 }
