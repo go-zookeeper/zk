@@ -32,7 +32,6 @@ func (o lookupTimeoutOption) apply(provider *DNSHostProvider) {
 	provider.lookupTimeout = o.timeout
 }
 
-
 // DNSHostProvider is the default HostProvider. It currently matches
 // the Java StaticHostProvider, resolving hosts from DNS once during
 // the call to Init.  It could be easily extended to re-query DNS
