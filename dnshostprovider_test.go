@@ -251,3 +251,10 @@ func TestNewDNSHostProvider(t *testing.T) {
 		t.Fatalf("expected lookup timeout to be %v, got %v", want, provider.lookupTimeout)
 	}
 }
+
+func TestNewDNSHostProviderWithIgnore(t *testing.T) {
+	provider := NewDNSHostProvider(WithIgnoreDNSErrors())
+	if provider.ignoreDNSFailures != true {
+		t.Fatalf("expected ignoreDNSFailures to be true, got %v", provider.ignoreDNSFailures)
+	}
+}
