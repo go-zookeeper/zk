@@ -1228,6 +1228,60 @@ func TestIntegration_MaxBufferSize(t *testing.T) {
 	}
 }
 
+func TestSessionReconnectionFromSavedID(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Stop()
+
+	zk, eventChan, err := ts.ConnectAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zk.Close()
+	// Prevent reconnection from this client
+	zk.reconnectLatch = make(chan struct{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	err = waitForSession(ctx, eventChan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := zk.SessionID()
+	passwd := zk.SessionPasswd()
+
+	// Simulate network error by brutally closing the network connection.
+	_ = zk.conn.Close()
+
+	// Re-establish the session from a different client with the session id and passwd
+	zk, eventChan, err = ts.ConnectWithOptions(15*time.Second, WithSessionIdAndPasswd(sessionID, passwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zk.Close()
+
+	ctx, cancel = context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	err = waitForSession(ctx, eventChan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID2 := zk.SessionID()
+	passwd2 := zk.SessionPasswd()
+
+	if sessionID != sessionID2 {
+		t.Fatalf("session id mismatch: %d %d", sessionID, sessionID2)
+	}
+
+	if !reflect.DeepEqual(passwd, passwd2) {
+		t.Fatalf("session password mismatch: %v %v", passwd, passwd2)
+	}
+}
+
 func startSlowProxy(t *testing.T, up, down Rate, upstream string, adj func(ln *Listener)) (string, chan bool, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
