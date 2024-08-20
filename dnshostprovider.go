@@ -21,6 +21,23 @@ type lookupTimeoutOption struct {
 	timeout time.Duration
 }
 
+type DNSErrorsIgnoreOption struct {
+	ignore bool
+}
+
+func (o DNSErrorsIgnoreOption) apply(provider *DNSHostProvider) {
+	//TODO implement me
+	provider.ignoreDNSFailures = o.ignore
+}
+
+// WithIgnoreDNSErrors returns a DNSHostProviderOption that sets the ignoreDNSFailures to true.
+// This option helps you to ignore DNS errors in case you have a hostname that is not resolvable.
+func WithIgnoreDNSErrors() DNSHostProviderOption {
+	return DNSErrorsIgnoreOption{
+		ignore: true,
+	}
+}
+
 // WithLookupTimeout returns a DNSHostProviderOption that sets the lookup timeout.
 func WithLookupTimeout(timeout time.Duration) DNSHostProviderOption {
 	return lookupTimeoutOption{
@@ -37,12 +54,13 @@ func (o lookupTimeoutOption) apply(provider *DNSHostProvider) {
 // the call to Init.  It could be easily extended to re-query DNS
 // periodically or if there is trouble connecting.
 type DNSHostProvider struct {
-	mu            sync.Mutex // Protects everything, so we can add asynchronous updates later.
-	servers       []string
-	curr          int
-	last          int
-	lookupTimeout time.Duration
-	lookupHost    lookupHostFn // Override of net.LookupHost, for testing.
+	mu                sync.Mutex // Protects everything, so we can add asynchronous updates later.
+	servers           []string
+	curr              int
+	last              int
+	lookupTimeout     time.Duration
+	lookupHost        lookupHostFn // Override of net.LookupHost, for testing.
+	ignoreDNSFailures bool
 }
 
 // NewDNSHostProvider creates a new DNSHostProvider with the given options.
@@ -84,6 +102,10 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 		}
 		addrs, err := lookupHost(ctx, host)
 		if err != nil {
+			if hp.ignoreDNSFailures {
+				fmt.Printf("[WARN] Ignoring DNS failure for %s: %s\n", host, err)
+				continue
+			}
 			return err
 		}
 		for _, addr := range addrs {
