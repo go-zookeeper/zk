@@ -374,12 +374,14 @@ func (c *Conn) connect() error {
 
 		if retryStart {
 			c.flushUnsentRequests(ErrNoServer)
+			c.invalidateWatches(ErrNoServer)
 			select {
 			case <-time.After(time.Second):
 				// pass
 			case <-c.shouldQuit:
 				c.setState(StateDisconnected)
 				c.flushUnsentRequests(ErrClosing)
+				c.invalidateWatches(ErrClosing)
 				return ErrClosing
 			}
 		}
