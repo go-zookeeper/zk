@@ -890,6 +890,29 @@ func (c *Conn) addWatcher(path string, watchType watchType) <-chan Event {
 	return ch
 }
 
+func (c *Conn) removeWatcher(path string, chnl <-chan Event, watchType watchType) bool {
+	c.watchersLock.Lock()
+	defer c.watchersLock.Unlock()
+
+	wpt := watchPathType{path, watchType}
+	watchers := c.watchers[wpt]
+	for ind, ch := range watchers {
+		if ch == chnl {
+			close(ch)
+
+			// Remove the entry at index ind, by swapping it with the last entry
+			// and creating a slice without the last entry.
+			watchers[ind], watchers[len(watchers)-1] =
+				watchers[len(watchers)-1], watchers[ind]
+
+			c.watchers[wpt] = watchers[:len(watchers)-1]
+			return true
+		}
+	}
+
+	return false
+}
+
 func (c *Conn) queueRequest(opcode int32, req interface{}, res interface{}, recvFunc func(*request, *responseHeader, error)) <-chan response {
 	rq := &request{
 		xid:        c.nextXid(),
@@ -1003,6 +1026,13 @@ func (c *Conn) ChildrenW(path string) ([]string, *Stat, <-chan Event, error) {
 	return res.Children, &res.Stat, ech, err
 }
 
+// RemoveChildW removes the channel mentioned from the list
+// of watches. Returns true, if the channel was found and
+// removed.
+func (c *Conn) RemoveChildW(path string, ch <-chan Event) bool {
+	return c.removeWatcher(path, ch, watchTypeChild)
+}
+
 // Get gets the contents of a znode.
 func (c *Conn) Get(path string) ([]byte, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
@@ -1034,6 +1064,13 @@ func (c *Conn) GetW(path string) ([]byte, *Stat, <-chan Event, error) {
 		return nil, nil, nil, err
 	}
 	return res.Data, &res.Stat, ech, err
+}
+
+// RemoveGetW removes the channel mentioned from the list
+// of watches. Returns true, if the channel was found and
+// removed.
+func (c *Conn) RemoveGetW(path string, ch <-chan Event) bool {
+	return c.removeWatcher(path, ch, watchTypeData)
 }
 
 // Set updates the contents of a znode.
@@ -1221,6 +1258,20 @@ func (c *Conn) ExistsW(path string) (bool, *Stat, <-chan Event, error) {
 		return false, nil, nil, err
 	}
 	return exists, &res.Stat, ech, err
+}
+
+// RemoveExistsW removes the channel mentioned from the list
+// of watches. Returns true, if the channel was found and
+// removed.
+func (c *Conn) RemoveExistsW(path string, ch <-chan Event) bool {
+	removedExistsWatch := c.removeWatcher(path, ch, watchTypeExist)
+
+	// A data watch would have been created for this,
+	// had the zk node existed when the watch was initiated.
+	if !removedExistsWatch {
+		return c.removeWatcher(path, ch, watchTypeData)
+	}
+	return removedExistsWatch
 }
 
 // GetACL gets the ACLs of a znode.
