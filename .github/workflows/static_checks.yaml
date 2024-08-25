@@ -1,0 +1,14 @@
+name: static check in one go
+on: pull_request
+
+jobs:
+  in-one:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - name: check
+      uses: danhunsaker/golang-github-actions@v1.3.0
+      with:
+        run: errcheck,vet,fmt,staticcheck
+        token: ${{ secrets.GITHUB_TOKEN }}
