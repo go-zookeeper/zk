@@ -88,6 +88,9 @@ func newLocalHostPortsFacade(inner HostProvider, ports []int) *localHostPortsFac
 func (lhpf *localHostPortsFacade) Len() int                    { return lhpf.inner.Len() }
 func (lhpf *localHostPortsFacade) Connected()                  { lhpf.inner.Connected() }
 func (lhpf *localHostPortsFacade) Init(servers []string) error { return lhpf.inner.Init(servers) }
+func (lhpf *localHostPortsFacade) UpdateServerList(servers []string) error {
+	return lhpf.inner.UpdateServerList(servers)
+}
 func (lhpf *localHostPortsFacade) Next() (string, bool) {
 	server, retryStart := lhpf.inner.Next()
 
