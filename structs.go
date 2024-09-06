@@ -287,6 +287,12 @@ type multiResponse struct {
 	DoneHeader multiHeader
 }
 
+type removeWatchRequest struct {
+	Path        string
+	WatcherType WatcherType
+}
+type removeWatchResponse struct{}
+
 // zk version 3.5 reconfig API
 type reconfigRequest struct {
 	JoiningServers []byte
@@ -630,6 +636,8 @@ func requestStructForOp(op int32) interface{} {
 		return &multiRequest{}
 	case opReconfig:
 		return &reconfigRequest{}
+	case opRemoveWatches:
+		return &removeWatchRequest{}
 	}
 	return nil
 }
