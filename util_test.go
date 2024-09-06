@@ -51,3 +51,20 @@ func TestValidatePath(t *testing.T) {
 		}
 	}
 }
+
+func TestBoolToByte(t *testing.T) {
+	 tt := []struct{
+	 	given  bool
+	 	expected byte
+	 }{
+	 	{true, 1},
+	 	{false, 0},
+	 }
+
+	for _, tc := range tt {
+		result := boolToByte(tc.given)
+		if result != tc.expected {
+			t.Errorf("failed to transform bool into byte: %v", tc.given)
+		}
+	}
+}

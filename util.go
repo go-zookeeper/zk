@@ -117,3 +117,11 @@ func validatePath(path string, isSequential bool) error {
 	}
 	return nil
 }
+
+// boolToByte transforms true in 1, false in 0
+func boolToByte(b bool) byte {
+	if b {
+		return 1
+	}
+	return 0
+}
