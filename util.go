@@ -24,6 +24,13 @@ func WorldACL(perms int32) []ACL {
 	return []ACL{{perms, "world", "anyone"}}
 }
 
+// SaslACL produces an ACL list containing a single ACL which uses the
+// provided permissions, with the scheme "sasl", and ID <user>, which is used
+// by Zookeeper to represent a SASL authenticated user.
+func SaslACL(user string, perms int32) []ACL {
+	return []ACL{{perms, "sasl", user}}
+}
+
 func DigestACL(perms int32, user, password string) []ACL {
 	userPass := []byte(fmt.Sprintf("%s:%s", user, password))
 	h := sha1.New()

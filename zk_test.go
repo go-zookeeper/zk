@@ -720,6 +720,118 @@ func TestIntegration_Auth(t *testing.T) {
 	}
 }
 
+func TestSasl(t *testing.T) {
+	tmpPath, err := ioutil.TempDir("", "gozk")
+	requireNoError(t, err, "failed to create tmp dir for test server setup")
+	defer os.RemoveAll(tmpPath)
+
+	startPort := int(rand.Int31n(6000) + 10000)
+
+	srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv1"))
+	if err := os.Mkdir(srvPath, 0700); err != nil {
+		requireNoError(t, err, "failed to make server path")
+	}
+	testSrvConfig := ServerConfigServer{
+		ID:                 1,
+		Host:               "127.0.0.1",
+		PeerPort:           startPort + 1,
+		LeaderElectionPort: startPort + 2,
+	}
+	cfg := ServerConfig{
+		ClientPort: startPort,
+		DataDir:    srvPath,
+		Servers:    []ServerConfigServer{testSrvConfig},
+	}
+
+	cfgPath := filepath.Join(srvPath, _testConfigName)
+	fi, err := os.Create(cfgPath)
+	requireNoError(t, err)
+
+	user, password := "admin", "super"
+	jaasCfgTpl := `Server {
+		org.apache.zookeeper.server.auth.DigestLoginModule required
+		user_%s="%s";
+	};
+	`
+	jaasCfg := fmt.Sprintf(jaasCfgTpl, user, password)
+	jaasPath := filepath.Join(tmpPath, "jaas.conf")
+	err = ioutil.WriteFile(jaasPath, []byte(jaasCfg), 0644)
+	requireNoError(t, err)
+
+	cfg.AuthProvider = "org.apache.zookeeper.server.auth.SASLAuthenticationProvider"
+
+	requireNoError(t, cfg.Marshall(fi))
+	fi.Close()
+
+	fi, err = os.Create(filepath.Join(srvPath, _testMyIDFileName))
+	requireNoError(t, err)
+
+	_, err = fmt.Fprintln(fi, "1")
+	fi.Close()
+	requireNoError(t, err)
+
+	testServer, err := NewIntegrationTestServer(t, cfgPath, nil, nil)
+	requireNoError(t, err)
+	authEnv := fmt.Sprintf(" -Djava.security.auth.login.config=%s", jaasPath)
+	testServer.cmdEnv[0] += authEnv
+	err = testServer.Start()
+	requireNoError(t, err)
+
+	defer testServer.Stop()
+
+	waitCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	servers := []string{fmt.Sprintf("127.0.0.1:%d", startPort)}
+	conn, eChan, err := Connect(servers, time.Second*2)
+
+	requireNoError(t, err)
+	waitForSession(waitCtx, eChan)
+	defer conn.Close()
+
+	// Wait for connection to be ready.
+	for i := 0; i < 20; i++ {
+		_, _, err = conn.Children("/")
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second * 1)
+	}
+
+	requireNoError(t, err)
+
+	// AddAuth should work.
+	authData := fmt.Sprintf("%s:%s", user, password)
+	err = conn.AddAuth("sasl", []byte(authData))
+	requireNoError(t, err)
+
+	data := []byte("sasl")
+	_, err = conn.Create("/sasl", data, 0, SaslACL(user, PermAll))
+	requireNoError(t, err)
+
+	conn2, _, err := Connect(servers, time.Second*2)
+	defer conn2.Close()
+	_, err = conn2.Create("/sasl/test", data, 0, WorldACL(PermAll))
+
+	// Expect it to fail.
+	if err == nil {
+		t.Errorf("Auth doesn't work.")
+	}
+
+	// Check resend work.
+	obj := authCreds{
+		scheme: "sasl",
+		auth:   []byte(authData),
+	}
+	conn2.creds = append(conn2.creds, obj)
+
+	err = resendZkAuth(waitCtx, conn2)
+	requireNoError(t, err)
+
+	_, err = conn2.Create("/sasl/test", data, 0, WorldACL(PermAll))
+	requireNoError(t, err)
+}
+
 func TestIntegration_Children(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
