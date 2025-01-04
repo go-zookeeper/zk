@@ -74,6 +74,7 @@ type ServerClients struct {
 
 // ServerStats is the information pulled from the Zookeeper `stat` command.
 type ServerStats struct {
+	Server      string
 	Sent        int64
 	Received    int64
 	NodeCount   int64
@@ -164,8 +165,6 @@ type CreateRequest struct {
 	Acl   []ACL
 	Flags int32
 }
-
-type CreateContainerRequest CreateRequest
 
 type CreateTTLRequest struct {
 	Path  string
@@ -593,10 +592,8 @@ func requestStructForOp(op int32) interface{} {
 	switch op {
 	case opClose:
 		return &closeRequest{}
-	case opCreate:
+	case opCreate, opCreateContainer:
 		return &CreateRequest{}
-	case opCreateContainer:
-		return &CreateContainerRequest{}
 	case opCreateTTL:
 		return &CreateTTLRequest{}
 	case opDelete:

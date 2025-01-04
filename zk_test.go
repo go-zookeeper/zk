@@ -3,9 +3,9 @@ package zk
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,7 +21,7 @@ import (
 	"time"
 )
 
-func TestStateChanges(t *testing.T) {
+func TestIntegration_StateChanges(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +67,162 @@ func TestStateChanges(t *testing.T) {
 	verifyEventOrder(eventChan, []State{StateDisconnected}, "event channel")
 }
 
-func TestCreate(t *testing.T) {
+func TestIntegration_Create(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	requireNoErrorf(t, err)
+	defer ts.Stop()
+
+	zk, _, err := ts.ConnectAll()
+	requireNoErrorf(t, err, "ConnectAll()")
+	defer zk.Close()
+
+	tests := []struct {
+		name          string
+		createFlags   int32
+		specifiedPath string
+		wantErr       string
+	}{
+		{
+			name:        "valid create persistant",
+			createFlags: FlagPersistent,
+		},
+		{
+			name:        "valid container from Create",
+			createFlags: FlagContainer,
+			// NOTE for v2: we dont need CreateContainer method.
+		},
+		{
+			name:          "invalid path",
+			specifiedPath: "not/valid",
+			wantErr:       "zk: invalid path",
+		},
+		{
+			name:        "invalid create ttl",
+			createFlags: FlagTTL,
+			wantErr:     "zk: invalid flags specified",
+		},
+
+		{
+			name:        "invalid flag for create mode",
+			createFlags: 999,
+			wantErr:     "invalid flag value: [999]",
+		},
+	}
+
+	const testPath = "/ttl_znode_tests"
+	// create sub node to create per test in avoiding using the root path.
+	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
+	requireNoErrorf(t, err)
+
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(testPath, fmt.Sprint(idx))
+			if tt.specifiedPath != "" {
+				path = tt.specifiedPath
+			}
+
+			_, err := zk.Create(path, []byte{12}, tt.createFlags, WorldACL(PermAll))
+			if tt.wantErr == "" {
+				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				return
+			}
+
+			// want an error
+			if err == nil {
+				t.Fatalf("did not get expected error: %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestIntegration_CreateTTL(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	requireNoErrorf(t, err)
+	defer ts.Stop()
+
+	zk, _, err := ts.ConnectAll()
+	requireNoErrorf(t, err, "ConnectAll()")
+	defer zk.Close()
+
+	tests := []struct {
+		name          string
+		createFlags   int32
+		specifiedPath string
+		giveDuration  time.Duration
+		wantErr       string
+		wantErrIs     error
+	}{
+		{
+			name:          "valid create ttl",
+			specifiedPath: "/test-valid-create-ttl",
+			createFlags:   FlagTTL,
+			giveDuration:  time.Minute,
+		},
+		{
+			name:          "valid change detector",
+			specifiedPath: "/test-valid-change",
+			createFlags:   5,
+			giveDuration:  time.Minute,
+		},
+		{
+			name:          "invalid path",
+			createFlags:   FlagTTL,
+			specifiedPath: "not/valid",
+			wantErr:       "zk: invalid path",
+			wantErrIs:     ErrInvalidPath,
+		},
+		{
+			name:          "invalid container with ttl",
+			specifiedPath: "/test-invalid-flags",
+			createFlags:   FlagContainer,
+			wantErr:       "zk: invalid flags specified",
+			wantErrIs:     ErrInvalidFlags,
+		},
+		{
+			name:          "invalid flag for create mode",
+			specifiedPath: "/test-invalid-mode",
+			createFlags:   999,
+			giveDuration:  time.Minute,
+			wantErr:       "invalid flag value: [999]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.specifiedPath == "" {
+				t.Fatalf("path for test required: %v", tt.name)
+			}
+
+			_, err := zk.CreateTTL(tt.specifiedPath, []byte{12}, tt.createFlags, WorldACL(PermAll), tt.giveDuration)
+			if tt.wantErr == "" {
+				requireNoErrorf(t, err,
+					fmt.Sprintf("error not expected: path; %q; flags %v", tt.specifiedPath, tt.createFlags))
+				return
+			}
+			// want an error
+			if tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error expected Is: %q", tt.wantErr)
+				}
+			}
+			if err == nil {
+				t.Errorf("did not get expected error: %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+// NOTE: Currently there is not a way to get the znode after creating and
+// asserting it is once mode or another. This means these tests are only testing the
+// path of creation, but is not asserting that the resulting znode is the
+// mode we set with flags.
+func TestIntegration_CreateContainer(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -78,136 +234,102 @@ func TestCreate(t *testing.T) {
 	}
 	defer zk.Close()
 
-	path := "/gozk-test"
+	tests := []struct {
+		name          string
+		createFlags   int32
+		specifiedPath string
+		wantErr       string
+	}{
+		{
+			name:        "valid create container",
+			createFlags: FlagContainer,
+		},
+		{
+			name:        "valid create container hard coded flag int",
+			createFlags: 4,
+			// container flag, ensure matches ZK Create Mode (change detector test)
+		},
+		{
+			name:          "invalid path",
+			createFlags:   FlagContainer,
+			specifiedPath: "not/valid",
+			wantErr:       "zk: invalid path",
+		},
+		{
+			name:        "invalid create mode",
+			createFlags: 999,
+			wantErr:     "invalid flag value: [999]",
+		},
+		{
+			name:        "invalid containers cannot be persistant",
+			createFlags: FlagPersistent,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invalid containers cannot be ephemeral",
+			createFlags: FlagEphemeral,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invalid containers cannot be sequential",
+			createFlags: FlagSequence,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invalid container and sequential",
+			createFlags: FlagContainer | FlagSequence,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+		{
+			name:        "invliad TTLs cannot be used with Container znodes",
+			createFlags: FlagTTL,
+			wantErr:     ErrInvalidFlags.Error(),
+		},
+	}
 
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
-	}
-	if p, err := zk.Create(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if p != path {
-		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
-	}
-	if data, stat, err := zk.Get(path); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
+	const testPath = "/container_test_znode"
+	// create sub node to create per test in avoiding using the root path.
+	_, err = zk.Create(testPath, nil /* data */, FlagPersistent, WorldACL(PermAll))
+	requireNoErrorf(t, err)
+
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(testPath, fmt.Sprint(idx))
+			if tt.specifiedPath != "" {
+				path = tt.specifiedPath
+			}
+
+			_, err := zk.CreateContainer(path, []byte{12}, tt.createFlags, WorldACL(PermAll))
+			if tt.wantErr == "" {
+				requireNoErrorf(t, err, fmt.Sprintf("error not expected: path; %q; flags %v", path, tt.createFlags))
+				return
+			}
+
+			// want an error
+			if err == nil {
+				t.Fatalf("did not get expected error: %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("wanted error not found: %v; got: %v", tt.wantErr, err.Error())
+			}
+		})
 	}
 }
 
-func TestCreateTTL(t *testing.T) {
-	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ts.Stop()
-	zk, _, err := ts.ConnectAll()
-	if err != nil {
-		t.Fatalf("Connect returned error: %+v", err)
-	}
-	defer zk.Close()
+func TestIntegration_IncrementalReconfig(t *testing.T) {
+	requireMinimumZkVersion(t, "3.5")
 
-	path := "/gozk-test"
-
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
-	}
-	if _, err := zk.CreateTTL("", []byte{1, 2, 3, 4}, FlagTTL|FlagEphemeral, WorldACL(PermAll), 60*time.Second); err != ErrInvalidPath {
-		t.Fatalf("Create path check failed")
-	}
-	if _, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll), 60*time.Second); err != ErrInvalidFlags {
-		t.Fatalf("Create flags check failed")
-	}
-	if p, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, FlagTTL|FlagEphemeral, WorldACL(PermAll), 60*time.Second); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if p != path {
-		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
-	}
-	if data, stat, err := zk.Get(path); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
-	}
-
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
-	}
-	if p, err := zk.CreateTTL(path, []byte{1, 2, 3, 4}, FlagTTL|FlagSequence, WorldACL(PermAll), 60*time.Second); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if !strings.HasPrefix(p, path) {
-		t.Fatalf("Create returned invalid path '%s' are not '%s' with sequence", p, path)
-	} else if data, stat, err := zk.Get(p); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
-	}
-}
-
-func TestCreateContainer(t *testing.T) {
-	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ts.Stop()
-	zk, _, err := ts.ConnectAll()
-	if err != nil {
-		t.Fatalf("Connect returned error: %+v", err)
-	}
-	defer zk.Close()
-
-	path := "/gozk-test"
-
-	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
-		t.Fatalf("Delete returned error: %+v", err)
-	}
-	if _, err := zk.CreateContainer("", []byte{1, 2, 3, 4}, FlagTTL, WorldACL(PermAll)); err != ErrInvalidPath {
-		t.Fatalf("Create path check failed")
-	}
-	if _, err := zk.CreateContainer(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != ErrInvalidFlags {
-		t.Fatalf("Create flags check failed")
-	}
-	if p, err := zk.CreateContainer(path, []byte{1, 2, 3, 4}, FlagTTL, WorldACL(PermAll)); err != nil {
-		t.Fatalf("Create returned error: %+v", err)
-	} else if p != path {
-		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
-	}
-	if data, stat, err := zk.Get(path); err != nil {
-		t.Fatalf("Get returned error: %+v", err)
-	} else if stat == nil {
-		t.Fatal("Get returned nil stat")
-	} else if len(data) < 4 {
-		t.Fatal("Get returned wrong size data")
-	}
-}
-
-func TestIncrementalReconfig(t *testing.T) {
-	if val, ok := os.LookupEnv("zk_version"); ok {
-		if !strings.HasPrefix(val, "3.5") {
-			t.Skip("running with zookeeper that does not support this api")
-		}
-	} else {
-		t.Skip("did not detect zk_version from env. skipping reconfig test")
-	}
 	ts, err := StartTestCluster(t, 3, nil, logWriter{t: t, p: "[ZKERR] "})
-	requireNoError(t, err, "failed to setup test cluster")
+	requireNoErrorf(t, err, "failed to setup test cluster")
 	defer ts.Stop()
 
 	// start and add a new server.
-	tmpPath, err := ioutil.TempDir("", "gozk")
-	requireNoError(t, err, "failed to create tmp dir for test server setup")
-	defer os.RemoveAll(tmpPath)
-
+	tmpPath := t.TempDir()
 	startPort := int(rand.Int31n(6000) + 10000)
 
 	srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv4"))
 	if err := os.Mkdir(srvPath, 0700); err != nil {
-		requireNoError(t, err, "failed to make server path")
+		requireNoErrorf(t, err, "failed to make server path")
 	}
 	testSrvConfig := ServerConfigServer{
 		ID:                 4,
@@ -224,35 +346,35 @@ func TestIncrementalReconfig(t *testing.T) {
 	// TODO: clean all this server creating up to a better helper method
 	cfgPath := filepath.Join(srvPath, _testConfigName)
 	fi, err := os.Create(cfgPath)
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
-	requireNoError(t, cfg.Marshall(fi))
+	requireNoErrorf(t, cfg.Marshall(fi))
 	fi.Close()
 
 	fi, err = os.Create(filepath.Join(srvPath, _testMyIDFileName))
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
 	_, err = fmt.Fprintln(fi, "4")
 	fi.Close()
-	requireNoError(t, err)
+	requireNoErrorf(t, err)
 
 	testServer, err := NewIntegrationTestServer(t, cfgPath, nil, nil)
-	requireNoError(t, err)
-	requireNoError(t, testServer.Start())
+	requireNoErrorf(t, err)
+	requireNoErrorf(t, testServer.Start())
 	defer testServer.Stop()
 
 	zk, events, err := ts.ConnectAll()
-	requireNoError(t, err, "failed to connect to cluster")
+	requireNoErrorf(t, err, "failed to connect to cluster")
 	defer zk.Close()
 
 	err = zk.AddAuth("digest", []byte("super:test"))
-	requireNoError(t, err, "failed to auth to cluster")
+	requireNoErrorf(t, err, "failed to auth to cluster")
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	err = waitForSession(waitCtx, events)
-	requireNoError(t, err, "failed to wail for session")
+	requireNoErrorf(t, err, "failed to wail for session")
 
 	_, _, err = zk.Get("/zookeeper/config")
 	if err != nil {
@@ -268,7 +390,7 @@ func TestIncrementalReconfig(t *testing.T) {
 	if err != nil && err == ErrConnectionClosed {
 		t.Log("conneciton closed is fine since the cluster re-elects and we dont reconnect")
 	} else {
-		requireNoError(t, err, "failed to remove node from cluster")
+		requireNoErrorf(t, err, "failed to remove node from cluster")
 	}
 
 	// add node a new 4th node
@@ -277,36 +399,30 @@ func TestIncrementalReconfig(t *testing.T) {
 	if err != nil && err == ErrConnectionClosed {
 		t.Log("conneciton closed is fine since the cluster re-elects and we dont reconnect")
 	} else {
-		requireNoError(t, err, "failed to add new server to cluster")
+		requireNoErrorf(t, err, "failed to add new server to cluster")
 	}
 }
 
-func TestReconfig(t *testing.T) {
-	if val, ok := os.LookupEnv("zk_version"); ok {
-		if !strings.HasPrefix(val, "3.5") {
-			t.Skip("running with zookeeper that does not support this api")
-		}
-	} else {
-		t.Skip("did not detect zk_version from env. skipping reconfig test")
-	}
+func TestIntegration_Reconfig(t *testing.T) {
+	requireMinimumZkVersion(t, "3.5")
 
 	// This test enures we can do an non-incremental reconfig
 	ts, err := StartTestCluster(t, 3, nil, logWriter{t: t, p: "[ZKERR] "})
-	requireNoError(t, err, "failed to setup test cluster")
+	requireNoErrorf(t, err, "failed to setup test cluster")
 	defer ts.Stop()
 
 	zk, events, err := ts.ConnectAll()
-	requireNoError(t, err, "failed to connect to cluster")
+	requireNoErrorf(t, err, "failed to connect to cluster")
 	defer zk.Close()
 
 	err = zk.AddAuth("digest", []byte("super:test"))
-	requireNoError(t, err, "failed to auth to cluster")
+	requireNoErrorf(t, err, "failed to auth to cluster")
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	err = waitForSession(waitCtx, events)
-	requireNoError(t, err, "failed to wail for session")
+	requireNoErrorf(t, err, "failed to wail for session")
 
 	_, _, err = zk.Get("/zookeeper/config")
 	if err != nil {
@@ -320,7 +436,7 @@ func TestReconfig(t *testing.T) {
 	}
 
 	_, err = zk.Reconfig(s, -1)
-	requireNoError(t, err, "failed to reconfig cluster")
+	requireNoErrorf(t, err, "failed to reconfig cluster")
 
 	// reconfig to all the hosts again
 	s = []string{}
@@ -329,10 +445,10 @@ func TestReconfig(t *testing.T) {
 	}
 
 	_, err = zk.Reconfig(s, -1)
-	requireNoError(t, err, "failed to reconfig cluster")
+	requireNoErrorf(t, err, "failed to reconfig cluster")
 }
 
-func TestOpsAfterCloseDontDeadlock(t *testing.T) {
+func TestIntegration_OpsAfterCloseDontDeadlock(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -363,7 +479,7 @@ func TestOpsAfterCloseDontDeadlock(t *testing.T) {
 	}
 }
 
-func TestMulti(t *testing.T) {
+func TestIntegration_Multi(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -400,7 +516,7 @@ func TestMulti(t *testing.T) {
 	}
 }
 
-func TestIfAuthdataSurvivesReconnect(t *testing.T) {
+func TestIntegration_IfAuthdataSurvivesReconnect(t *testing.T) {
 	// This test case ensures authentication data is being resubmited after
 	// reconnect.
 	testNode := "/auth-testnode"
@@ -452,7 +568,7 @@ func TestIfAuthdataSurvivesReconnect(t *testing.T) {
 	}
 }
 
-func TestMultiFailures(t *testing.T) {
+func TestIntegration_MultiFailures(t *testing.T) {
 	// This test case ensures that we return the errors associated with each
 	// opeThis in the event a call to Multi() fails.
 	const firstPath = "/gozk-test-first"
@@ -500,7 +616,7 @@ func TestMultiFailures(t *testing.T) {
 	}
 }
 
-func TestGetSetACL(t *testing.T) {
+func TestIntegration_GetSetACL(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -554,7 +670,7 @@ func TestGetSetACL(t *testing.T) {
 	}
 }
 
-func TestAuth(t *testing.T) {
+func TestIntegration_Auth(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -769,7 +885,7 @@ func TestChildren(t *testing.T) {
 	}
 }
 
-func TestChildWatch(t *testing.T) {
+func TestIntegration_ChildWatch(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -840,7 +956,7 @@ func TestChildWatch(t *testing.T) {
 	}
 }
 
-func TestSetWatchers(t *testing.T) {
+func TestIntegration_SetWatchers(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -983,7 +1099,7 @@ func TestSetWatchers(t *testing.T) {
 	}
 }
 
-func TestExpiringWatch(t *testing.T) {
+func TestIntegration_ExpiringWatch(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -1059,7 +1175,7 @@ func TestIdempotentClose(t *testing.T) {
 	zk.Close()
 }
 
-func TestSlowServer(t *testing.T) {
+func TestIntegration_SlowServer(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -1118,7 +1234,7 @@ func TestSlowServer(t *testing.T) {
 	}
 }
 
-func TestMaxBufferSize(t *testing.T) {
+func TestIntegration_MaxBufferSize(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -1307,6 +1423,36 @@ func expectLogMessage(t *testing.T, logger *testLogger, pattern string) {
 		t.Fatalf("Failed to log error; expecting message that matches pattern: %s", pattern)
 	} else if len(found) > 1 {
 		t.Fatalf("Logged error redundantly %d times:\n%+v", len(found), found)
+	}
+}
+
+func requireMinimumZkVersion(t *testing.T, minimum string) {
+	t.Helper()
+
+	actualVersionStr, ok := os.LookupEnv("ZK_VERSION")
+	if !ok {
+		t.Skip("did not detect ZK_VERSION from env. skipping test")
+	}
+
+	parseFn := func(v string) (parts []int) {
+		for _, s := range strings.Split(v, ".") {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				t.Fatalf("invalid version segment: %q", s)
+			}
+			parts = append(parts, i)
+		}
+		return parts
+	}
+
+	minimumV, actualV := parseFn(minimum), parseFn(actualVersionStr)
+	for i, p := range minimumV {
+		if len(actualV) <= i {
+			break
+		}
+		if actualV[i] < p {
+			t.Skipf("zookeeper required min version not met; requires: %q, actual: %q", minimum, actualVersionStr)
+		}
 	}
 }
 

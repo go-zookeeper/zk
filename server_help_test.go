@@ -3,7 +3,6 @@ package zk
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -16,10 +15,6 @@ const (
 	_testConfigName   = "zoo.cfg"
 	_testMyIDFileName = "myid"
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 type TestServer struct {
 	Port   int
@@ -36,8 +31,10 @@ type TestCluster struct {
 
 // TODO: pull this into its own package to allow for better isolation of integration tests vs. unit
 // testing. This should be used on CI systems and local only when needed whereas unit tests should remain
-// fast and not rely on external dependecies.
+// fast and not rely on external dependencies.
 func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCluster, error) {
+	t.Helper()
+
 	if testing.Short() {
 		t.Skip("ZK cluster tests skipped in short case.")
 	}
@@ -52,8 +49,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 		}
 	}
 
-	tmpPath, err := ioutil.TempDir("", "gozk")
-	requireNoError(t, err, "failed to create tmp dir for test server setup")
+	tmpPath := t.TempDir()
 
 	success := false
 	startPort := int(rand.Int31n(6000) + 10000)
@@ -67,7 +63,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 
 	for serverN := 0; serverN < size; serverN++ {
 		srvPath := filepath.Join(tmpPath, fmt.Sprintf("srv%d", serverN+1))
-		requireNoError(t, os.Mkdir(srvPath, 0700), "failed to make server path")
+		requireNoErrorf(t, os.Mkdir(srvPath, 0700), "failed to make server path")
 
 		port := startPort + serverN*3
 		cfg := ServerConfig{
@@ -88,20 +84,20 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 
 		cfgPath := filepath.Join(srvPath, _testConfigName)
 		fi, err := os.Create(cfgPath)
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
-		requireNoError(t, cfg.Marshall(fi))
+		requireNoErrorf(t, cfg.Marshall(fi))
 		fi.Close()
 
 		fi, err = os.Create(filepath.Join(srvPath, _testMyIDFileName))
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		_, err = fmt.Fprintf(fi, "%d\n", serverN+1)
 		fi.Close()
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		srv, err := NewIntegrationTestServer(t, cfgPath, stdout, stderr)
-		requireNoError(t, err)
+		requireNoErrorf(t, err)
 
 		if err := srv.Start(); err != nil {
 			return nil, err
@@ -152,7 +148,7 @@ func (tc *TestCluster) Stop() error {
 	for _, srv := range tc.Servers {
 		srv.Srv.Stop()
 	}
-	defer os.RemoveAll(tc.Path)
+
 	return tc.waitForStop(5, time.Second)
 }
 
@@ -253,7 +249,9 @@ func (tc *TestCluster) StopAllServers() error {
 	return nil
 }
 
-func requireNoError(t *testing.T, err error, msgAndArgs ...interface{}) {
+func requireNoErrorf(t *testing.T, err error, msgAndArgs ...interface{}) {
+	t.Helper()
+
 	if err != nil {
 		t.Logf("received unexpected error: %v", err)
 		t.Fatal(msgAndArgs...)

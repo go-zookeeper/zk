@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestLock(t *testing.T) {
+func TestIntegration_Lock(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestLock(t *testing.T) {
 
 // This tests creating a lock with a path that's more than 1 node deep (e.g. "/test-multi-level/lock"),
 // when a part of that path already exists (i.e. "/test-multi-level" node already exists).
-func TestMultiLevelLock(t *testing.T) {
+func TestIntegration_MultiLevelLock(t *testing.T) {
 	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
 	if err != nil {
 		t.Fatal(err)
@@ -96,24 +96,31 @@ func TestMultiLevelLock(t *testing.T) {
 
 func TestParseSeq(t *testing.T) {
 	const (
-		goLock = "_c_38553bd6d1d57f710ae70ddcc3d24715-lock-0000000000"
-		pyLock = "da5719988c244fc793f49ec3aa29b566__lock__0000000003"
+		goLock       = "_c_38553bd6d1d57f710ae70ddcc3d24715-lock-0000000000"
+		negativeLock = "_c_38553bd6d1d57f710ae70ddcc3d24715-lock--2147483648"
+		pyLock       = "da5719988c244fc793f49ec3aa29b566__lock__0000000003"
 	)
 
 	seq, err := parseSeq(goLock)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if seq != 0 {
 		t.Fatalf("Expected 0 instead of %d", seq)
+	}
+
+	seq, err = parseSeq(negativeLock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq != -2147483648 {
+		t.Fatalf("Expected -2147483648 instead of %d", seq)
 	}
 
 	seq, err = parseSeq(pyLock)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if seq != 3 {
 		t.Fatalf("Expected 3 instead of %d", seq)
 	}
