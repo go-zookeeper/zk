@@ -37,12 +37,14 @@ func (o lookupTimeoutOption) apply(provider *DNSHostProvider) {
 // the call to Init.  It could be easily extended to re-query DNS
 // periodically or if there is trouble connecting.
 type DNSHostProvider struct {
-	mu            sync.Mutex // Protects everything, so we can add asynchronous updates later.
-	servers       []string
-	curr          int
-	last          int
-	lookupTimeout time.Duration
-	lookupHost    lookupHostFn // Override of net.LookupHost, for testing.
+	mu              sync.Mutex // Protects everything, so we can add asynchronous updates later.
+	rawServers      []string
+	servers         []string
+	curr            int
+	last            int
+	lookupTimeout   time.Duration
+	lookupHost      lookupHostFn // Override of net.LookupHost, for testing.
+	lastRefreshTime time.Time
 }
 
 // NewDNSHostProvider creates a new DNSHostProvider with the given options.
@@ -60,6 +62,8 @@ func NewDNSHostProvider(options ...DNSHostProviderOption) *DNSHostProvider {
 func (hp *DNSHostProvider) Init(servers []string) error {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
+
+	hp.rawServers = servers
 
 	lookupHost := hp.lookupHost
 	if lookupHost == nil {
@@ -105,6 +109,76 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 	return nil
 }
 
+func (hp *DNSHostProvider) refreshLocked() error {
+	if time.Since(hp.lastRefreshTime) < time.Second {
+		return fmt.Errorf("refresh too often")
+	}
+	hp.lastRefreshTime = time.Now()
+
+	lookupHost := hp.lookupHost
+	if lookupHost == nil {
+		var resolver net.Resolver
+		lookupHost = resolver.LookupHost
+	}
+
+	timeout := hp.lookupTimeout
+	if timeout == 0 {
+		timeout = _defaultLookupTimeout
+	}
+
+	// TODO: consider using a context from the caller.
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	found := map[string]struct{}{}
+	for _, server := range hp.rawServers {
+		host, port, err := net.SplitHostPort(server)
+		if err != nil {
+			return err
+		}
+		addrs, err := lookupHost(ctx, host)
+		if err != nil {
+			return err
+		}
+		for _, addr := range addrs {
+			found[net.JoinHostPort(addr, port)] = struct{}{}
+		}
+	}
+
+	if len(found) == 0 {
+		return fmt.Errorf("No hosts found for addresses %q", hp.rawServers)
+	}
+
+	var (
+		oldServers     = hp.servers
+		delServers     []string
+		reserveServers []string
+		addServers     []string
+	)
+
+	for _, s := range oldServers {
+		if _, ok := found[s]; ok {
+			reserveServers = append(reserveServers, s)
+			delete(found, s)
+		} else {
+			delServers = append(delServers, s)
+		}
+	}
+	for s := range found {
+		addServers = append(addServers, s)
+	}
+
+	if len(delServers) == 0 && len(addServers) == 0 {
+		return fmt.Errorf("nothing update")
+	}
+
+	hp.servers = append(addServers, reserveServers...)
+	hp.curr = -1
+	hp.last = -1
+
+	return nil
+}
+
 // Len returns the number of servers available
 func (hp *DNSHostProvider) Len() int {
 	hp.mu.Lock()
@@ -120,6 +194,15 @@ func (hp *DNSHostProvider) Next() (server string, retryStart bool) {
 	defer hp.mu.Unlock()
 	hp.curr = (hp.curr + 1) % len(hp.servers)
 	retryStart = hp.curr == hp.last
+
+	if retryStart {
+		err := hp.refreshLocked()
+		if err == nil {
+			hp.curr = (hp.curr + 1) % len(hp.servers)
+			retryStart = hp.curr == hp.last
+		}
+	}
+
 	if hp.last == -1 {
 		hp.last = 0
 	}
