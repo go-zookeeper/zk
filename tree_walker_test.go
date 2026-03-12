@@ -32,17 +32,14 @@ func TestTreeWalker(t *testing.T) {
 				}
 			}
 
-			// Test Walk with visitor.
-			t.Run("Walk_BreadthFirstOrder", func(t *testing.T) {
-				w := NewTreeWalker(c.Children, "/gozk-test-walker", BreadthFirstOrder)
-
+			t.Run("All_BreadthFirstOrder", func(t *testing.T) {
+				nodes, walkErr := NewTreeWalker(c.Children, "/gozk-test-walker", BreadthFirstOrder).All(context.Background())
 				var visited []string
-				err := w.Walk(context.Background(), func(ctx context.Context, path string, _ *Stat) error {
+				for path := range nodes {
 					visited = append(visited, path)
-					return nil
-				})
-				if err != nil {
-					t.Fatalf("Walk returned an error: %+v", err)
+				}
+				if err := walkErr(); err != nil {
+					t.Fatalf("All returned an error: %+v", err)
 				}
 
 				expected := []string{
@@ -55,16 +52,14 @@ func TestTreeWalker(t *testing.T) {
 				expectVisitedExact(t, expected, visited)
 			})
 
-			t.Run("Walk_DepthFirstOrder", func(t *testing.T) {
-				w := NewTreeWalker(c.Children, "/gozk-test-walker", DepthFirstOrder)
-
+			t.Run("All_DepthFirstOrder", func(t *testing.T) {
+				nodes, walkErr := NewTreeWalker(c.Children, "/gozk-test-walker", DepthFirstOrder).All(context.Background())
 				var visited []string
-				err := w.Walk(context.Background(), func(ctx context.Context, path string, _ *Stat) error {
+				for path := range nodes {
 					visited = append(visited, path)
-					return nil
-				})
-				if err != nil {
-					t.Fatalf("Walk returned an error: %+v", err)
+				}
+				if err := walkErr(); err != nil {
+					t.Fatalf("All returned an error: %+v", err)
 				}
 
 				expected := []string{

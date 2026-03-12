@@ -27,11 +27,11 @@ func main() {
 	for {
 		<-time.After(time.Second)
 		var leaves []string
-		err := walker.Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
+		nodes, walkErr := walker.All(ctx)
+		for p := range nodes {
 			leaves = append(leaves, p)
-			return nil
-		})
-		if err != nil {
+		}
+		if err := walkErr(); err != nil {
 			panic(err)
 		}
 		fmt.Printf("Got %d leaves:\n%+v\n", len(leaves), leaves)

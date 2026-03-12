@@ -341,7 +341,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 	syncStartTime := time.Now()
 
 	// Walk from rootPath to populate our new tree state.
-	if err = tc.conn.BatchWalker(tc.rootPath, tc.batchSize).Walk(ctx, batchAddNodes); err != nil {
+	if err = tc.conn.BatchWalker(tc.rootPath, tc.batchSize).walk(ctx, batchAddNodes); err != nil {
 		return err
 	}
 

@@ -30,7 +30,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 		lookupHost = net.LookupHost
 	}
 
-	found := []string{}
+	var found []string
 	for _, server := range servers {
 		host, port, err := net.SplitHostPort(server)
 		if err != nil {

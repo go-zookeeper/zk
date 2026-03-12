@@ -215,12 +215,11 @@ func TestTreeCache_OpsWithRelativePaths(t *testing.T) {
 
 			// Walking from root.
 			var visited []string
-			walker := cache.Walker("/", BreadthFirstOrder)
-			err = walker.Walk(context.Background(), func(_ context.Context, path string, stat *Stat) error {
+			nodes, walkErr := cache.Walker("/", BreadthFirstOrder).All(context.Background())
+			for path := range nodes {
 				visited = append(visited, path)
-				return nil
-			})
-			if err != nil {
+			}
+			if err := walkErr(); err != nil {
 				t.Fatalf("failed to walk: %v", err)
 			}
 			slices.Sort(visited) // For consistency.
@@ -349,12 +348,11 @@ func TestTreeCache_OpsWithAbsolutePaths(t *testing.T) {
 
 			// Walking from root.
 			var visited []string
-			walker := cache.Walker("/test-tree-cache", BreadthFirstOrder)
-			err = walker.Walk(context.Background(), func(_ context.Context, path string, stat *Stat) error {
+			nodes, walkErr := cache.Walker("/test-tree-cache", BreadthFirstOrder).All(context.Background())
+			for path := range nodes {
 				visited = append(visited, path)
-				return nil
-			})
-			if err != nil {
+			}
+			if err := walkErr(); err != nil {
 				t.Fatalf("failed to walk: %v", err)
 			}
 			slices.Sort(visited) // For consistency.

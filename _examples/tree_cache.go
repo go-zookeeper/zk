@@ -45,12 +45,11 @@ func main() {
 	fmt.Printf("children: %+v, stat: %+v", children, stat)
 
 	// Walk cache breadth-first.
-	walker := cache.Walker("/bar", zk.BreadthFirstOrder) // Effectively: c.Walker("/foo/bar")
-	err = walker.Walk(ctx, func(_ context.Context, path string, stat *zk.Stat) error {
+	nodes, walkErr := cache.Walker("/bar", zk.BreadthFirstOrder).All(ctx)
+	for path, stat := range nodes {
 		fmt.Printf("path: %s, stat: %+v", path, stat)
-		return nil
-	})
-	if err != nil {
+	}
+	if err := walkErr(); err != nil {
 		panic(err)
 	}
 }

@@ -23,27 +23,20 @@ func main() {
 	ctx := context.Background()
 
 	// Walk breadth-first.
-	err = c.Walker("/foo", zk.BreadthFirstOrder).
-		Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
-			slog.Info("visited node", "path", p)
-			return nil
-		})
-	if err != nil {
+	nodes, walkErr := c.Walker("/foo", zk.BreadthFirstOrder).All(ctx)
+	for p, stat := range nodes {
+		slog.Info("visited node", "path", p, "version", stat.Version)
+	}
+	if err = walkErr(); err != nil {
 		panic(err)
 	}
 
 	// Walk depth-first.
-	err = c.Walker("/foo", zk.DepthFirstOrder).
-		Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
-			slog.Info("visited node", "path", p)
-			return nil
-		})
-	if err != nil {
-		panic(err)
+	nodes, walkErr = c.Walker("/foo", zk.DepthFirstOrder).All(ctx)
+	for p := range nodes {
+		slog.Info("visited node", "path", p)
 	}
-
-	// Walk breadth-first and iterate using All.
-	for p, stat := range c.Walker("/foo", zk.BreadthFirstOrder).All(ctx) {
-		slog.Info("visited node", "path", p, "version", stat.Version)
+	if err = walkErr(); err != nil {
+		panic(err)
 	}
 }
