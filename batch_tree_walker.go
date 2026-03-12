@@ -7,8 +7,8 @@ import (
 	gopath "path"
 )
 
-// batchVisitorFunc is a function that is called for each batch of nodes visited.
-type batchVisitorFunc func(ctx context.Context, paths []string) error
+// BatchVisitorFunc is a function that is called for each batch of nodes visited.
+type BatchVisitorFunc func(ctx context.Context, paths []string) error
 
 // NewBatchTreeWalker returns a new BatchTreeWalker for the given connection, root path and batch size.
 func NewBatchTreeWalker(conn *Conn, path string, batchSize int) *BatchTreeWalker {
@@ -38,7 +38,7 @@ type BatchTreeWalker struct {
 func (w *BatchTreeWalker) All(ctx context.Context) (iter.Seq[string], func() error) {
 	var walkErr error
 	seq := func(yield func(string) bool) {
-		walkErr = w.walk(ctx, func(_ context.Context, paths []string) error {
+		walkErr = w.Walk(ctx, func(_ context.Context, paths []string) error {
 			for _, p := range paths {
 				if !yield(p) {
 					return errBreak
@@ -53,15 +53,15 @@ func (w *BatchTreeWalker) All(ctx context.Context) (iter.Seq[string], func() err
 	return seq, func() error { return walkErr }
 }
 
-// walk begins traversing the tree and calls the visitor function for each batch of nodes visited.
-func (w *BatchTreeWalker) walk(ctx context.Context, visitor batchVisitorFunc) error {
+// Walk traverses the tree and calls the visitor function for each batch of nodes visited.
+func (w *BatchTreeWalker) Walk(ctx context.Context, visitor BatchVisitorFunc) error {
 	return w.walkBatch(ctx, []string{w.path}, visitor)
 }
 
 // walkBatch recursively walks the tree in batches.
 // It calls the visitor function for each batch of nodes visited.
 // It fetches children in batches to reduce the number of round trips.
-func (w *BatchTreeWalker) walkBatch(ctx context.Context, paths []string, visitor batchVisitorFunc) error {
+func (w *BatchTreeWalker) walkBatch(ctx context.Context, paths []string, visitor BatchVisitorFunc) error {
 	// Execute the visitor function on all paths.
 	if err := visitor(ctx, paths); err != nil {
 		return err

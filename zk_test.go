@@ -2103,7 +2103,7 @@ func TestBatchWalker(t *testing.T) {
 				startTime := time.Now()
 				var visited []string
 				var numBatches = 0
-				err := walker.walk(context.Background(), func(_ context.Context, paths []string) error {
+				err := walker.Walk(context.Background(), func(_ context.Context, paths []string) error {
 					visited = append(visited, paths...)
 					numBatches++
 					return nil
