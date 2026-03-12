@@ -44,14 +44,12 @@ func main() {
 	}
 	fmt.Printf("children: %+v, stat: %+v", children, stat)
 
-	// Walk leaves of cache.
-	walker := cache.Walker("/bar") // Effectively: c.Walker("/foo/bar")
-	err = walker.LeavesOnly().
-		BreadthFirst().
-		Walk(func(path string, stat *zk.Stat) error {
-			fmt.Printf("path: %s, stat: %+v", path, stat)
-			return nil
-		})
+	// Walk cache breadth-first.
+	walker := cache.Walker("/bar", zk.BreadthFirstOrder) // Effectively: c.Walker("/foo/bar")
+	err = walker.Walk(ctx, func(_ context.Context, path string, stat *zk.Stat) error {
+		fmt.Printf("path: %s, stat: %+v", path, stat)
+		return nil
+	})
 	if err != nil {
 		panic(err)
 	}

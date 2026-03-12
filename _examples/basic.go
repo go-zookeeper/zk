@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -12,7 +13,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	ch, err := c.AddWatch("/", true)
+	ch, err := c.AddWatch(context.Background(), "/", true)
 	if err != nil {
 		panic(err)
 	}

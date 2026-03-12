@@ -47,26 +47,19 @@ func parseSeq(path string) (int, error) {
 // Lock attempts to acquire the lock. It works like LockWithData, but it doesn't
 // write any data to the lock node.
 func (l *Lock) Lock() error {
-	return l.LockWithDataCtx(context.Background(), []byte{})
+	return l.LockWithData(context.Background(), []byte{})
 }
 
 // LockCtx attempts to acquire the lock. It works like LockWithData, but it doesn't
 // write any data to the lock node.
 func (l *Lock) LockCtx(ctx context.Context) error {
-	return l.LockWithDataCtx(ctx, []byte{})
+	return l.LockWithData(ctx, []byte{})
 }
 
 // LockWithData attempts to acquire the lock, writing data into the lock node.
 // It will wait to return until the lock is acquired or an error occurs. If
 // this instance already has the lock then ErrDeadlock is returned.
-func (l *Lock) LockWithData(data []byte) error {
-	return l.LockWithDataCtx(context.Background(), data)
-}
-
-// LockWithDataCtx attempts to acquire the lock, writing data into the lock node.
-// It will wait to return until the lock is acquired or an error occurs. If
-// this instance already has the lock then ErrDeadlock is returned.
-func (l *Lock) LockWithDataCtx(ctx context.Context, data []byte) error {
+func (l *Lock) LockWithData(ctx context.Context, data []byte) error {
 	if l.lockPath != "" {
 		return ErrDeadlock
 	}
@@ -76,7 +69,7 @@ func (l *Lock) LockWithDataCtx(ctx context.Context, data []byte) error {
 
 	var err error
 	for range 3 {
-		path, err = l.c.CreateProtectedEphemeralSequentialCtx(ctx, prefix, data, l.acl)
+		path, err = l.c.CreateProtectedEphemeralSequential(ctx, prefix, data, l.acl)
 		if errors.Is(err, ErrNoNode) {
 			// Create parent node.
 			parts := strings.Split(l.path, "/")
@@ -84,14 +77,14 @@ func (l *Lock) LockWithDataCtx(ctx context.Context, data []byte) error {
 			for _, p := range parts[1:] {
 				var exists bool
 				pth.WriteString("/" + p)
-				exists, _, err = l.c.ExistsCtx(ctx, pth.String())
+				exists, _, err = l.c.Exists(ctx, pth.String())
 				if err != nil {
 					return err
 				}
 				if exists {
 					continue
 				}
-				_, err = l.c.CreateCtx(ctx, pth.String(), []byte{}, 0, l.acl)
+				_, err = l.c.Create(ctx, pth.String(), []byte{}, 0, l.acl)
 				if err != nil && !errors.Is(err, ErrNodeExists) {
 					return err
 				}
@@ -116,12 +109,12 @@ func (l *Lock) LockWithDataCtx(ctx context.Context, data []byte) error {
 		if !acquired {
 			// Cleanup our ephemeral node, if we return before acquiring the lock.
 			// Otherwise, we risk leaking the lock and blocking other participants.
-			_ = l.c.Delete(path, -1)
+			_ = l.c.Delete(ctx, path, -1)
 		}
 	}()
 
 	for {
-		children, _, err := l.c.ChildrenCtx(ctx, l.path)
+		children, _, err := l.c.Children(ctx, l.path)
 		if err != nil {
 			return err
 		}
@@ -150,7 +143,7 @@ func (l *Lock) LockWithDataCtx(ctx context.Context, data []byte) error {
 		}
 
 		// Wait on the node next in line for the lock
-		_, _, ch, err := l.c.GetWCtx(ctx, l.path+"/"+prevSeqPath)
+		_, _, ch, err := l.c.GetW(ctx, l.path+"/"+prevSeqPath)
 		if err != nil && !errors.Is(err, ErrNoNode) {
 			return err
 		} else if errors.Is(err, ErrNoNode) {
@@ -185,7 +178,7 @@ func (l *Lock) UnlockCtx(ctx context.Context) error {
 	if l.lockPath == "" {
 		return ErrNotLocked
 	}
-	if err := l.c.DeleteCtx(ctx, l.lockPath, -1); err != nil {
+	if err := l.c.Delete(ctx, l.lockPath, -1); err != nil {
 		return err
 	}
 	l.lockPath = ""

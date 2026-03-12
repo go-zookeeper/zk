@@ -23,7 +23,7 @@ func TestRecurringReAuthHang(t *testing.T) {
 			}
 
 			// Add auth.
-			if err := c.AddAuth("digest", []byte("test:test")); err != nil {
+			if err := c.AddAuth(context.Background(), "digest", []byte("test:test")); err != nil {
 				t.Fatalf("Failed to add auth %s", err)
 			}
 
@@ -69,7 +69,7 @@ func TestConcurrentReadAndClose(t *testing.T) {
 		okChan := make(chan struct{})
 		var setErr error
 		go func() {
-			_, setErr = conn.Create("/test-path", []byte("test data"), 0, WorldACL(PermAll))
+			_, setErr = conn.Create(context.Background(), "/test-path", []byte("test data"), 0, WorldACL(PermAll))
 			close(okChan)
 		}()
 

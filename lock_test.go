@@ -1,6 +1,7 @@
 package zk
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -70,7 +71,7 @@ func TestMultiLevelLock(t *testing.T) {
 			acls := WorldACL(PermAll)
 			path := "/test-multi-level"
 
-			if p, err := c.Create(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
+			if p, err := c.Create(context.Background(), path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
 				t.Fatalf("Create returned error: %+v", err)
 			} else if p != path {
 				t.Fatalf("Create returned different path '%s' != '%s'", p, path)
@@ -79,8 +80,8 @@ func TestMultiLevelLock(t *testing.T) {
 			l := NewLock(c, "/test-multi-level/lock", acls)
 
 			// Clean up what we've created for this test
-			defer c.Delete("/test-multi-level", -1)      // nolint: errcheck
-			defer c.Delete("/test-multi-level/lock", -1) // nolint: errcheck
+			defer c.Delete(context.Background(), "/test-multi-level", -1)      // nolint: errcheck
+			defer c.Delete(context.Background(), "/test-multi-level/lock", -1) // nolint: errcheck
 
 			if err := l.Lock(); err != nil {
 				t.Fatal(err)

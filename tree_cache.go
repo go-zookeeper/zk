@@ -256,7 +256,7 @@ func (tc *TreeCache) Sync(ctx context.Context) (err error) {
 		}
 
 		// Wait for path to exist.
-		if found, _, existsCh, err := tc.conn.ExistsWCtx(ctx, tc.rootPath); !found || err != nil {
+		if found, _, existsCh, err := tc.conn.ExistsW(ctx, tc.rootPath); !found || err != nil {
 			if err != nil {
 				tc.logger.Error("failed to check if path exists", "error", err)
 				continue // Re-check conditions.
@@ -288,7 +288,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 	stalled.Store(false)
 	// Start a recursive watch, so we do not miss any changes.
 	// We'll catch up with the changes after the initial sync.
-	watchCh, err := tc.conn.AddWatchCtx(ctx, tc.rootPath, true,
+	watchCh, err := tc.conn.AddWatch(ctx, tc.rootPath, true,
 		WithWatcherInvalidateOnDisconnect(),
 		WithWatcherReservoirLimit(tc.reservoirLimit),
 		WithStallCallback(func() {
@@ -298,7 +298,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 		return err
 	}
 	defer func() {
-		_ = tc.conn.RemoveWatch(watchCh)
+		_ = tc.conn.RemoveWatch(ctx, watchCh)
 	}()
 
 	// Holds the new tree state, which we must populate before replacing the current tree (if any).
@@ -315,7 +315,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 		}
 
 		// Fetch all the data in a single batch.
-		resps, err := tc.conn.MultiReadCtx(ctx, ops...)
+		resps, err := tc.conn.MultiRead(ctx, ops...)
 		if err != nil && !errors.Is(err, ErrNoNode) { // Ignore ErrNoNode.
 			return err
 		}
@@ -341,7 +341,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 	syncStartTime := time.Now()
 
 	// Walk from rootPath to populate our new tree state.
-	if err = tc.conn.BatchWalker(tc.rootPath, tc.batchSize).WalkCtx(ctx, batchAddNodes); err != nil {
+	if err = tc.conn.BatchWalker(tc.rootPath, tc.batchSize).Walk(ctx, batchAddNodes); err != nil {
 		return err
 	}
 
@@ -379,7 +379,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 			case EventNodeCreated:
 				if relPath != "/" {
 					// Update stat of parent to reflect new child count.
-					found, stat, err := tc.conn.ExistsCtx(ctx, filepath.Dir(e.Path))
+					found, stat, err := tc.conn.Exists(ctx, filepath.Dir(e.Path))
 					if err != nil {
 						return err // We are out of sync.
 					}
@@ -388,7 +388,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 					}
 				}
 				if tc.includeData {
-					data, stat, err := tc.conn.GetCtx(ctx, e.Path)
+					data, stat, err := tc.conn.Get(ctx, e.Path)
 					if err != nil {
 						if errors.Is(err, ErrNoNode) {
 							continue // We'll get an EventNodeDeleted later.
@@ -400,7 +400,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 						tc.listener.OnNodeCreated(relPath, data, stat)
 					}
 				} else {
-					found, stat, err := tc.conn.ExistsCtx(ctx, e.Path)
+					found, stat, err := tc.conn.Exists(ctx, e.Path)
 					if err != nil {
 						return err // We are out of sync.
 					}
@@ -413,7 +413,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 				}
 			case EventNodeDataChanged:
 				if tc.includeData {
-					data, stat, err := tc.conn.GetCtx(ctx, e.Path)
+					data, stat, err := tc.conn.Get(ctx, e.Path)
 					if err != nil {
 						if errors.Is(err, ErrNoNode) {
 							continue // We'll get an EventNodeDeleted later.
@@ -425,7 +425,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 						tc.listener.OnNodeDataChanged(relPath, data, stat)
 					}
 				} else {
-					found, stat, err := tc.conn.ExistsCtx(ctx, e.Path)
+					found, stat, err := tc.conn.Exists(ctx, e.Path)
 					if err != nil {
 						return err // We are out of sync.
 					}
@@ -439,7 +439,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 			case EventNodeDeleted:
 				if relPath != "/" {
 					// Update stat of parent to reflect new child count.
-					found, stat, err := tc.conn.ExistsCtx(ctx, filepath.Dir(e.Path))
+					found, stat, err := tc.conn.Exists(ctx, filepath.Dir(e.Path))
 					if err != nil {
 						return err
 					}

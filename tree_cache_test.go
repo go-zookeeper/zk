@@ -50,7 +50,7 @@ func TestTreeCache_ConsistentAfterInitialSync(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
 			for _, n := range initialNodes {
-				_, err := c.Create(n.realPath, []byte(n.data), 0, WorldACL(PermAll))
+				_, err := c.Create(context.Background(), n.realPath, []byte(n.data), 0, WorldACL(PermAll))
 				if err != nil {
 					t.Fatalf("failed to create node %s: %v", n.realPath, err)
 				}
@@ -128,7 +128,7 @@ func TestTreeCache_OpsWithRelativePaths(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
 			for _, n := range initialNodes {
-				_, err := c.Create(n.realPath, []byte(n.data), 0, WorldACL(PermAll))
+				_, err := c.Create(context.Background(), n.realPath, []byte(n.data), 0, WorldACL(PermAll))
 				if err != nil {
 					t.Fatalf("failed to create node %s: %v", n.realPath, err)
 				}
@@ -216,7 +216,7 @@ func TestTreeCache_OpsWithRelativePaths(t *testing.T) {
 			// Walking from root.
 			var visited []string
 			walker := cache.Walker("/", BreadthFirstOrder)
-			err = walker.Walk(func(path string, stat *Stat) error {
+			err = walker.Walk(context.Background(), func(_ context.Context, path string, stat *Stat) error {
 				visited = append(visited, path)
 				return nil
 			})
@@ -268,7 +268,7 @@ func TestTreeCache_OpsWithAbsolutePaths(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
 			for _, n := range initialNodes {
-				_, err := c.Create(n.realPath, []byte(n.data), 0, WorldACL(PermAll))
+				_, err := c.Create(context.Background(), n.realPath, []byte(n.data), 0, WorldACL(PermAll))
 				if err != nil {
 					t.Fatalf("failed to create node %s: %v", n.realPath, err)
 				}
@@ -350,7 +350,7 @@ func TestTreeCache_OpsWithAbsolutePaths(t *testing.T) {
 			// Walking from root.
 			var visited []string
 			walker := cache.Walker("/test-tree-cache", BreadthFirstOrder)
-			err = walker.Walk(func(path string, stat *Stat) error {
+			err = walker.Walk(context.Background(), func(_ context.Context, path string, stat *Stat) error {
 				visited = append(visited, path)
 				return nil
 			})
@@ -375,7 +375,7 @@ func TestTreeCache_OpsWithAbsolutePaths(t *testing.T) {
 func TestTreeCache_WatchesNodeCreate(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			_, err := c.Create("/test-tree-cache", nil, 0, WorldACL(PermAll))
+			_, err := c.Create(context.Background(), "/test-tree-cache", nil, 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
 			}
@@ -398,7 +398,7 @@ func TestTreeCache_WatchesNodeCreate(t *testing.T) {
 				t.Fatalf("initial cache sync failed: %v", err)
 			}
 
-			_, _ = c.Create("/test-tree-cache/child1", []byte("child1"), 0, WorldACL(PermAll))
+			_, _ = c.Create(context.Background(), "/test-tree-cache/child1", []byte("child1"), 0, WorldACL(PermAll))
 			time.Sleep(time.Millisecond * 100)
 
 			data, stat, err := cache.Get("/child1")
@@ -432,11 +432,11 @@ func TestTreeCache_WatchesNodeCreate(t *testing.T) {
 func TestTreeCache_WatchesNodeUpdate(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			_, err := c.Create("/test-tree-cache", nil, 0, WorldACL(PermAll))
+			_, err := c.Create(context.Background(), "/test-tree-cache", nil, 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
 			}
-			_, err = c.Create("/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
+			_, err = c.Create(context.Background(), "/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child1", err)
 			}
@@ -459,7 +459,7 @@ func TestTreeCache_WatchesNodeUpdate(t *testing.T) {
 				t.Fatalf("initial cache sync failed: %v", err)
 			}
 
-			_, _ = c.Set("/test-tree-cache/child1", []byte("bar"), 0)
+			_, _ = c.Set(context.Background(), "/test-tree-cache/child1", []byte("bar"), 0)
 			time.Sleep(time.Millisecond * 100)
 
 			data, stat, err := cache.Get("/child1")
@@ -484,11 +484,11 @@ func TestTreeCache_WatchesNodeUpdate(t *testing.T) {
 func TestTreeCache_WatchesNodeDelete(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			_, err := c.Create("/test-tree-cache", nil, 0, WorldACL(PermAll))
+			_, err := c.Create(context.Background(), "/test-tree-cache", nil, 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
 			}
-			_, err = c.Create("/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
+			_, err = c.Create(context.Background(), "/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child1", err)
 			}
@@ -511,7 +511,7 @@ func TestTreeCache_WatchesNodeDelete(t *testing.T) {
 				t.Fatalf("initial cache sync failed: %v", err)
 			}
 
-			_ = c.Delete("/test-tree-cache/child1", -1)
+			_ = c.Delete(context.Background(), "/test-tree-cache/child1", -1)
 			time.Sleep(time.Millisecond * 100)
 
 			ok, _, err := cache.Exists("/child1")
@@ -535,7 +535,7 @@ func TestTreeCache_RecoversFromDisconnect(t *testing.T) {
 		WithConnectAll(t, tc, func(t *testing.T, c1 *Conn, ech1 <-chan Event) {
 			c1.reconnectLatch = make(chan struct{})
 
-			_, err := c1.Create("/test-tree-cache", nil, 0, WorldACL(PermAll))
+			_, err := c1.Create(context.Background(), "/test-tree-cache", nil, 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
 			}
@@ -579,7 +579,7 @@ func TestTreeCache_RecoversFromDisconnect(t *testing.T) {
 			// This will cause the cache to miss some events, but hopefully it will catch up on session reestablishment.
 			WithConnectAll(t, tc, func(t *testing.T, c2 *Conn, _ <-chan Event) {
 				for i := range 100 {
-					_, err := c2.Create("/test-tree-cache/child-"+strconv.Itoa(i), []byte("foo"), 0, WorldACL(PermAll))
+					_, err := c2.Create(context.Background(), "/test-tree-cache/child-"+strconv.Itoa(i), []byte("foo"), 0, WorldACL(PermAll))
 					if err != nil {
 						t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child-"+strconv.Itoa(i), err)
 					}
@@ -617,15 +617,15 @@ func TestTreeCache_RecoversFromDisconnect(t *testing.T) {
 func TestTreeCache_WatchesNodeDeleting(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			_, err := c.Create("/test-tree-cache", nil, 0, WorldACL(PermAll))
+			_, err := c.Create(context.Background(), "/test-tree-cache", nil, 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
 			}
-			_, err = c.Create("/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
+			_, err = c.Create(context.Background(), "/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child1", err)
 			}
-			_, err = c.Create("/test-tree-cache/child2", []byte("bar"), 0, WorldACL(PermAll))
+			_, err = c.Create(context.Background(), "/test-tree-cache/child2", []byte("bar"), 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child2", err)
 			}
@@ -649,7 +649,7 @@ func TestTreeCache_WatchesNodeDeleting(t *testing.T) {
 				t.Fatalf("initial cache sync failed: %v", err)
 			}
 
-			_ = c.Delete("/test-tree-cache/child1", -1)
+			_ = c.Delete(context.Background(), "/test-tree-cache/child1", -1)
 			time.Sleep(time.Millisecond * 100)
 
 			// Check that the listener was called.
@@ -671,7 +671,7 @@ func TestTreeCache_WatchesNodeDeleting(t *testing.T) {
 			// Delete the path from cache before deleting from ZK to simulate non-existent node.
 			cache.delete("/child2")
 
-			_ = c.Delete("/test-tree-cache/child2", -1)
+			_ = c.Delete(context.Background(), "/test-tree-cache/child2", -1)
 			time.Sleep(time.Millisecond * 100)
 
 			// Check that the listener was called.
@@ -701,15 +701,15 @@ func TestTreeCache_WatchesNodeDeleting(t *testing.T) {
 func TestTreeCache_WatchesNodeDeletingAbsolute(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		WithConnectAll(t, tc, func(t *testing.T, c *Conn, _ <-chan Event) {
-			_, err := c.Create("/test-tree-cache", nil, 0, WorldACL(PermAll))
+			_, err := c.Create(context.Background(), "/test-tree-cache", nil, 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache", err)
 			}
-			_, err = c.Create("/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
+			_, err = c.Create(context.Background(), "/test-tree-cache/child1", []byte("foo"), 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child1", err)
 			}
-			_, err = c.Create("/test-tree-cache/child2", []byte("bar"), 0, WorldACL(PermAll))
+			_, err = c.Create(context.Background(), "/test-tree-cache/child2", []byte("bar"), 0, WorldACL(PermAll))
 			if err != nil {
 				t.Fatalf("failed to create node %s: %v", "/test-tree-cache/child2", err)
 			}
@@ -733,7 +733,7 @@ func TestTreeCache_WatchesNodeDeletingAbsolute(t *testing.T) {
 				t.Fatalf("initial cache sync failed: %v", err)
 			}
 
-			_ = c.Delete("/test-tree-cache/child1", -1)
+			_ = c.Delete(context.Background(), "/test-tree-cache/child1", -1)
 			time.Sleep(time.Millisecond * 100)
 
 			// Check that the listener was called.
@@ -755,7 +755,7 @@ func TestTreeCache_WatchesNodeDeletingAbsolute(t *testing.T) {
 			// Delete the path from cache before deleting from ZK to simulate non-existent node.
 			cache.delete("/child2")
 
-			_ = c.Delete("/test-tree-cache/child2", -1)
+			_ = c.Delete(context.Background(), "/test-tree-cache/child2", -1)
 			time.Sleep(time.Millisecond * 100)
 
 			// Check that the listener was called.

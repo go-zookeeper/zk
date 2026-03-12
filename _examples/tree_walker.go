@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -19,10 +20,11 @@ func main() {
 		log.Printf("SessionEvent closed")
 	}()
 
-	// Walk breath-first.
-	err = c.TreeWalker("/foo").
-		BreadthFirst().
-		Walk(func(p string, stat *zk.Stat) error {
+	ctx := context.Background()
+
+	// Walk breadth-first.
+	err = c.Walker("/foo", zk.BreadthFirstOrder).
+		Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
 			log.Printf("Got %s", p)
 			return nil
 		})
@@ -30,11 +32,9 @@ func main() {
 		panic(err)
 	}
 
-	// Walk depth-first and visit leaves only.
-	err = c.TreeWalker("/foo").
-		DepthFirst().
-		LeavesOnly().
-		Walk(func(p string, stat *zk.Stat) error {
+	// Walk depth-first.
+	err = c.Walker("/foo", zk.DepthFirstOrder).
+		Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
 			log.Printf("Got %s", p)
 			return nil
 		})
@@ -42,14 +42,8 @@ func main() {
 		panic(err)
 	}
 
-	// Walk breath-first with parallel traversal and receive events by channel.
-	ch := c.TreeWalker("/foo").
-		BreadthFirstParallel().
-		WalkChan(8) // You can tune the buffer size.
-	for e := range ch {
-		if e.Err != nil {
-			panic(e.Err)
-		}
-		log.Printf("Got %s", e.Path)
+	// Walk breadth-first and iterate using All.
+	for p, stat := range c.Walker("/foo", zk.BreadthFirstOrder).All(ctx) {
+		log.Printf("Got %s (version=%d)", p, stat.Version)
 	}
 }

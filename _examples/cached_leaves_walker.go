@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -20,15 +21,13 @@ func main() {
 		log.Printf("SessionEvent closed")
 	}()
 
-	w, err := zk.NewCachedLeavesWalker(c, "/leaves")
-	if err != nil {
-		panic(err)
-	}
+	ctx := context.Background()
+	walker := c.Walker("/leaves", zk.BreadthFirstOrder)
 
 	for {
 		<-time.After(time.Second)
-		leaves := []string{}
-		err := w.WalkLeaves(func(p string) error {
+		var leaves []string
+		err := walker.Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
 			leaves = append(leaves, p)
 			return nil
 		})
