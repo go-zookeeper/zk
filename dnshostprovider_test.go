@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"testing"
 	"time"
@@ -79,7 +79,8 @@ func (lhpf *localHostPortsFacade) Next() (string, bool) {
 	}
 
 	if lhpf.nextPort == len(lhpf.ports) {
-		log.Fatalf("localHostPortsFacade out of ports to assign to %q; current config: %q", server, lhpf.mapped)
+		slog.Error("localHostPortsFacade out of ports", "server", server, "mapped", lhpf.mapped)
+		panic("localHostPortsFacade out of ports")
 	}
 
 	localMapping := net.JoinHostPort("localhost", fmt.Sprint(lhpf.ports[lhpf.nextPort]))

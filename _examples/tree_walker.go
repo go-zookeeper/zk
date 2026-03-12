@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/Shopify/zk"
@@ -15,9 +15,9 @@ func main() {
 	}
 	go func() {
 		for e := range events {
-			log.Printf("SessionEvent: %+v", e)
+			slog.Info("session event", "event", e)
 		}
-		log.Printf("SessionEvent closed")
+		slog.Info("session event channel closed")
 	}()
 
 	ctx := context.Background()
@@ -25,7 +25,7 @@ func main() {
 	// Walk breadth-first.
 	err = c.Walker("/foo", zk.BreadthFirstOrder).
 		Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
-			log.Printf("Got %s", p)
+			slog.Info("visited node", "path", p)
 			return nil
 		})
 	if err != nil {
@@ -35,7 +35,7 @@ func main() {
 	// Walk depth-first.
 	err = c.Walker("/foo", zk.DepthFirstOrder).
 		Walk(ctx, func(_ context.Context, p string, stat *zk.Stat) error {
-			log.Printf("Got %s", p)
+			slog.Info("visited node", "path", p)
 			return nil
 		})
 	if err != nil {
@@ -44,6 +44,6 @@ func main() {
 
 	// Walk breadth-first and iterate using All.
 	for p, stat := range c.Walker("/foo", zk.BreadthFirstOrder).All(ctx) {
-		log.Printf("Got %s (version=%d)", p, stat.Version)
+		slog.Info("visited node", "path", p, "version", stat.Version)
 	}
 }

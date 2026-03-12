@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/Shopify/zk"
@@ -16,9 +16,9 @@ func main() {
 	}
 	go func() {
 		for e := range events {
-			log.Printf("SessionEvent: %+v", e)
+			slog.Info("session event", "event", e)
 		}
-		log.Printf("SessionEvent closed")
+		slog.Info("session event channel closed")
 	}()
 
 	ctx := context.Background()

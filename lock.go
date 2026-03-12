@@ -46,13 +46,7 @@ func parseSeq(path string) (int, error) {
 
 // Lock attempts to acquire the lock. It works like LockWithData, but it doesn't
 // write any data to the lock node.
-func (l *Lock) Lock() error {
-	return l.LockWithData(context.Background(), []byte{})
-}
-
-// LockCtx attempts to acquire the lock. It works like LockWithData, but it doesn't
-// write any data to the lock node.
-func (l *Lock) LockCtx(ctx context.Context) error {
+func (l *Lock) Lock(ctx context.Context) error {
 	return l.LockWithData(ctx, []byte{})
 }
 
@@ -168,13 +162,7 @@ func (l *Lock) LockWithData(ctx context.Context, data []byte) error {
 
 // Unlock releases an acquired lock. If the lock is not currently acquired by
 // this Lock instance than ErrNotLocked is returned.
-func (l *Lock) Unlock() error {
-	return l.UnlockCtx(context.Background())
-}
-
-// UnlockCtx releases an acquired lock. If the lock is not currently acquired by
-// this Lock instance than ErrNotLocked is returned.
-func (l *Lock) UnlockCtx(ctx context.Context) error {
+func (l *Lock) Unlock(ctx context.Context) error {
 	if l.lockPath == "" {
 		return ErrNotLocked
 	}

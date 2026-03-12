@@ -12,16 +12,16 @@ func TestLock(t *testing.T) {
 			acls := WorldACL(PermAll)
 
 			l := NewLock(c, "/test", acls)
-			if err := l.Lock(); err != nil {
+			if err := l.Lock(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if err := l.Unlock(); err != nil {
+			if err := l.Unlock(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 
 			val := make(chan int, 3)
 
-			if err := l.Lock(); err != nil {
+			if err := l.Lock(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 
@@ -29,12 +29,12 @@ func TestLock(t *testing.T) {
 			l2Errs := make(chan error, 2)
 			go func() {
 				defer close(l2Errs)
-				if err := l2.Lock(); err != nil {
+				if err := l2.Lock(context.Background()); err != nil {
 					l2Errs <- err
 					return
 				}
 				val <- 2
-				if err := l2.Unlock(); err != nil {
+				if err := l2.Unlock(context.Background()); err != nil {
 					l2Errs <- err
 					return
 				}
@@ -43,7 +43,7 @@ func TestLock(t *testing.T) {
 			time.Sleep(time.Millisecond * 100)
 
 			val <- 1
-			if err := l.Unlock(); err != nil {
+			if err := l.Unlock(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			if x := <-val; x != 1 {
@@ -83,10 +83,10 @@ func TestMultiLevelLock(t *testing.T) {
 			defer c.Delete(context.Background(), "/test-multi-level", -1)      // nolint: errcheck
 			defer c.Delete(context.Background(), "/test-multi-level/lock", -1) // nolint: errcheck
 
-			if err := l.Lock(); err != nil {
+			if err := l.Lock(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if err := l.Unlock(); err != nil {
+			if err := l.Unlock(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 		})
