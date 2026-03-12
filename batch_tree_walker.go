@@ -3,6 +3,7 @@ package zk
 import (
 	"context"
 	"errors"
+	"iter"
 	gopath "path"
 )
 
@@ -73,6 +74,28 @@ func (w *BatchTreeWalker) WalkChanCtx(ctx context.Context, bufferSize int) <-cha
 		}
 	}()
 	return ch
+}
+
+// All returns an iterator over all node paths in the tree.
+// It uses context.Background internally.
+func (w *BatchTreeWalker) All() iter.Seq[string] {
+	return w.AllCtx(context.Background())
+}
+
+// AllCtx returns an iterator over all node paths in the tree.
+// The caller can stop iteration early by breaking out of the range loop.
+func (w *BatchTreeWalker) AllCtx(ctx context.Context) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		err := w.WalkCtx(ctx, func(_ context.Context, paths []string) error {
+			for _, p := range paths {
+				if !yield(p) {
+					return errBreak
+				}
+			}
+			return nil
+		})
+		_ = err // errBreak is expected when the caller breaks out of the range loop.
+	}
 }
 
 // walkBatch recursively walks the tree in batches.

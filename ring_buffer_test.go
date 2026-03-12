@@ -1,6 +1,7 @@
 package zk
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -26,7 +27,7 @@ func Test_ringBuffer_push(t *testing.T) {
 	}
 
 	// Verify the contents of the buffer
-	if !slicesEqual(rb.toSlice(), []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
+	if !slices.Equal(rb.toSlice(), []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 		t.Fatalf("expected items {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, got %v", rb.toSlice())
 	}
 
@@ -42,7 +43,7 @@ func Test_ringBuffer_push(t *testing.T) {
 	}
 
 	// Verify the contents of the buffer
-	if !slicesEqual(rb.toSlice(), []int{5, 6, 7, 8, 9, 0, -1, -2, -3, -4}) {
+	if !slices.Equal(rb.toSlice(), []int{5, 6, 7, 8, 9, 0, -1, -2, -3, -4}) {
 		t.Fatalf("expected items {5, 6, 7, 8, 0, 0, -1, -2, -3, -4}, got %v", rb.toSlice())
 	}
 }
@@ -63,7 +64,7 @@ func Test_ringBuffer_offer(t *testing.T) {
 	}
 
 	// Verify the contents of the buffer
-	if !slicesEqual(rb.toSlice(), []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
+	if !slices.Equal(rb.toSlice(), []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 		t.Fatalf("expected items {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, got %v", rb.toSlice())
 	}
 
@@ -157,7 +158,7 @@ func Test_ringBuffer_ensureCapacity(t *testing.T) {
 	}
 
 	// Verify the contents of the buffer
-	if !slicesEqual(rb.toSlice(), []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14}) {
+	if !slices.Equal(rb.toSlice(), []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14}) {
 		t.Fatalf("expected items {5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, got %v", rb.toSlice())
 	}
 

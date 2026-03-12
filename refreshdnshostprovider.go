@@ -1,6 +1,9 @@
 package zk
 
-import "sync"
+import (
+	"log/slog"
+	"sync"
+)
 
 // RefreshDNSHostProvider is a wrapper around DNSHostProvider
 // that will re-resolve server addresses:
@@ -54,6 +57,6 @@ func (hp *RefreshDNSHostProvider) Connected() {
 func (hp *RefreshDNSHostProvider) refresh() {
 	hp.connected = false
 	if err := hp.DNSHostProvider.Init(hp.serverAddresses); err != nil {
-		DefaultLogger.Printf("failed to refresh serverAddresses: %v", err)
+		slog.Error("failed to refresh serverAddresses", "error", err)
 	}
 }

@@ -245,12 +245,12 @@ func (tc *TestCluster) StopServer(server string) {
 func (tc *TestCluster) StartAllServers() error {
 	for _, s := range tc.Servers {
 		if err := s.Srv.Start(); err != nil {
-			return fmt.Errorf("failed to start server listening on port `%d` : %+v", s.Port, err)
+			return fmt.Errorf("failed to start server listening on port `%d` : %w", s.Port, err)
 		}
 	}
 
 	if err := tc.waitForStart(10, time.Second*2); err != nil {
-		return fmt.Errorf("failed to wait to startup zk servers: %v", err)
+		return fmt.Errorf("failed to wait to startup zk servers: %w", err)
 	}
 
 	return nil
@@ -260,7 +260,7 @@ func (tc *TestCluster) StopAllServers() error {
 	var errs []error
 	for _, s := range tc.Servers {
 		if err := s.Srv.Stop(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to stop server listening on port `%d` : %v", s.Port, err))
+			errs = append(errs, fmt.Errorf("failed to stop server listening on port `%d` : %w", s.Port, err))
 		}
 	}
 	if len(errs) == 1 {
@@ -270,7 +270,7 @@ func (tc *TestCluster) StopAllServers() error {
 	}
 
 	if err := tc.waitForStop(5, time.Second); err != nil {
-		return fmt.Errorf("failed to wait to startup zk servers: %v", err)
+		return fmt.Errorf("failed to wait to startup zk servers: %w", err)
 	}
 
 	return nil

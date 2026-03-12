@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	gopath "path"
 )
 
@@ -93,6 +94,28 @@ func (w *TreeWalker) WalkChanCtx(ctx context.Context, bufferSize int) <-chan Vis
 	}()
 	return ch
 }
+
+// All returns an iterator over all nodes in the tree.
+// It uses context.Background internally.
+func (w *TreeWalker) All() iter.Seq2[string, *Stat] {
+	return w.AllCtx(context.Background())
+}
+
+// AllCtx returns an iterator over all nodes in the tree.
+// The caller can stop iteration early by breaking out of the range loop.
+func (w *TreeWalker) AllCtx(ctx context.Context) iter.Seq2[string, *Stat] {
+	return func(yield func(string, *Stat) bool) {
+		err := w.WalkCtx(ctx, func(_ context.Context, path string, stat *Stat) error {
+			if !yield(path, stat) {
+				return errBreak
+			}
+			return nil
+		})
+		_ = err // errBreak is expected when the caller breaks out of the range loop.
+	}
+}
+
+var errBreak = errors.New("break")
 
 // walkBreadthFirst walks the tree rooted at path in breadth-first order.
 func (w *TreeWalker) walkBreadthFirst(ctx context.Context, path string, visitor VisitorCtxFunc) error {

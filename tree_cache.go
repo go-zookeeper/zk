@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -77,7 +80,7 @@ func WithTreeCacheBatchSize(batchSize int) TreeCacheOption {
 }
 
 // WithTreeCacheLogger returns an option that sets the logger to use for the tree cache.
-func WithTreeCacheLogger(logger Logger) TreeCacheOption {
+func WithTreeCacheLogger(logger *slog.Logger) TreeCacheOption {
 	return func(tc *TreeCache) {
 		tc.logger = logger
 	}
@@ -188,7 +191,7 @@ func (l *TreeCacheListenerFuncs) OnNodeDataChanged(path string, data []byte, sta
 
 type TreeCache struct {
 	conn              *Conn
-	logger            Logger
+	logger            *slog.Logger
 	rootPath          string         // Path to root node being cached.
 	includeData       bool           // true to include data in cache; false to omit.
 	absolutePaths     bool           // true to report full/absolute paths; false to report paths relative to rootPath.
@@ -255,11 +258,11 @@ func (tc *TreeCache) Sync(ctx context.Context) (err error) {
 		// Wait for path to exist.
 		if found, _, existsCh, err := tc.conn.ExistsWCtx(ctx, tc.rootPath); !found || err != nil {
 			if err != nil {
-				tc.logger.Printf("failed to check if path exists: %v", err)
+				tc.logger.Error("failed to check if path exists", "error", err)
 				continue // Re-check conditions.
 			}
 			// Wait for the path to be created (up to 10 seconds, then re-check conditions).
-			tc.logger.Printf("waiting for path to exist: %s", tc.rootPath)
+			tc.logger.Info("waiting for path to exist", "path", tc.rootPath)
 			ctxWait, waitCancel := context.WithTimeout(ctx, 10*time.Second)
 			select {
 			case <-existsCh:
@@ -273,7 +276,7 @@ func (tc *TreeCache) Sync(ctx context.Context) (err error) {
 			if tc.listener != nil {
 				tc.listener.OnSyncError(err)
 			}
-			tc.logger.Printf("failed to sync tree cache: %v", err)
+			tc.logger.Error("failed to sync tree cache", "error", err)
 		}
 
 		// Loop back to restart next sync cycle.
@@ -356,7 +359,7 @@ func (tc *TreeCache) doSync(ctx context.Context) error {
 	tc.syncMutex.Unlock()
 
 	syncElapsedTime := time.Since(syncStartTime)
-	tc.logger.Printf("synced tree cache in %s", syncElapsedTime)
+	tc.logger.Info("synced tree cache", "elapsed", syncElapsedTime)
 	if tc.listener != nil {
 		tc.listener.OnTreeSynced(syncElapsedTime)
 	}
@@ -607,10 +610,7 @@ func (tc *TreeCache) Children(path string) ([]string, *Stat, error) {
 		return nil, nil, ErrNoNode
 	}
 
-	var children []string
-	for name := range n.children {
-		children = append(children, name)
-	}
+	children := slices.Collect(maps.Keys(n.children))
 
 	return children, n.stat, nil
 }

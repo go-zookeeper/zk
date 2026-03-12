@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -31,9 +32,6 @@ var ErrNoServer = errors.New("zk: could not connect to a server")
 // an invalid path. (e.g. empty path).
 var ErrInvalidPath = errors.New("zk: invalid path")
 
-// DefaultLogger uses the stdlib log package for logging.
-var DefaultLogger Logger = defaultLogger{}
-
 const (
 	bufferSize      = 1536 * 1024
 	eventChanSize   = 6
@@ -43,11 +41,6 @@ const (
 
 // Dialer is a function to be used to establish a connection to a single host.
 type Dialer func(network, address string, timeout time.Duration) (net.Conn, error)
-
-// Logger is an interface that can be implemented to provide custom log output.
-type Logger interface {
-	Printf(string, ...any)
-}
 
 type authCreds struct {
 	scheme string
@@ -96,7 +89,7 @@ type Conn struct {
 	debugCloseRecvLoop bool
 	resendZkAuthFn     func(context.Context, *Conn) error
 
-	logger  Logger
+	logger  *slog.Logger
 	logInfo bool // true if information messages are logged; false if only errors are logged
 
 	buf []byte
@@ -187,7 +180,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		requests:       make(map[int32]*request),
 		watchersByKey:  make(map[watcherKey][]watcher),
 		passwd:         emptyPassword,
-		logger:         DefaultLogger,
+		logger:         slog.Default(),
 		logInfo:        true, // default is true for backwards compatability
 		buf:            make([]byte, bufferSize),
 		resendZkAuthFn: resendZkAuth,
@@ -238,8 +231,8 @@ func WithHostProvider(hostProvider HostProvider) connOption { // nolint:revive
 	}
 }
 
-// WithLogger returns a connection option specifying a non-default Logger.
-func WithLogger(logger Logger) connOption { // nolint: revive
+// WithLogger returns a connection option specifying a non-default slog Logger.
+func WithLogger(logger *slog.Logger) connOption { // nolint: revive
 	return func(c *Conn) {
 		c.logger = logger
 	}
@@ -321,8 +314,7 @@ func (c *Conn) SessionID() int64 {
 }
 
 // SetLogger sets the logger to be used for printing errors.
-// Logger is an interface provided by this package.
-func (c *Conn) SetLogger(l Logger) {
+func (c *Conn) SetLogger(l *slog.Logger) {
 	c.logger = l
 }
 
@@ -376,12 +368,12 @@ func (c *Conn) connect() error {
 			c.conn = zkConn
 			c.setState(StateConnected)
 			if c.logInfo {
-				c.logger.Printf("connected to %s", c.Server())
+				c.logger.Info("connected", "server", c.Server())
 			}
 			return nil
 		}
 
-		c.logger.Printf("failed to connect to %s: %v", c.Server(), err)
+		c.logger.Error("failed to connect", "server", c.Server(), "error", err)
 	}
 }
 
@@ -425,17 +417,17 @@ func (c *Conn) loop(ctx context.Context) {
 		err := c.authenticate()
 		switch {
 		case errors.Is(err, ErrSessionExpired):
-			c.logger.Printf("authentication expired: %s", err)
+			c.logger.Error("authentication expired", "error", err)
 			c.resetSession(err)
 		case err != nil && c.conn != nil:
-			c.logger.Printf("authentication failed: %s", err)
+			c.logger.Error("authentication failed", "error", err)
 			c.conn.Close()
 			if !disconnectTime.IsZero() && c.sessionExpired(disconnectTime) {
 				c.resetSession(ErrSessionExpired)
 			}
 		case err == nil:
 			if c.logInfo {
-				c.logger.Printf("authenticated: id=%d, timeout=%d", c.SessionID(), c.sessionTimeoutMs)
+				c.logger.Info("authenticated", "id", c.SessionID(), "timeout", c.sessionTimeoutMs)
 			}
 			c.hostProvider.Connected()        // mark success
 			c.closeChan = make(chan struct{}) // channel to tell send loop stop
@@ -446,12 +438,12 @@ func (c *Conn) loop(ctx context.Context) {
 				defer c.conn.Close() // causes recv loop to EOF/exit
 
 				if err := c.resendZkAuthFn(ctx, c); err != nil {
-					c.logger.Printf("error in resending auth creds: %v", err)
+					c.logger.Error("error in resending auth creds", "error", err)
 					return
 				}
 
 				if err := c.sendLoop(); err != nil || c.logInfo {
-					c.logger.Printf("send loop terminated: %v", err)
+					c.logger.Info("send loop terminated", "error", err)
 				}
 			})
 
@@ -465,7 +457,7 @@ func (c *Conn) loop(ctx context.Context) {
 					err = c.recvLoop(c.conn)
 				}
 				if !errors.Is(err, io.EOF) || c.logInfo {
-					c.logger.Printf("recv loop terminated: %v", err)
+					c.logger.Info("recv loop terminated", "error", err)
 				}
 				if err == nil {
 					panic("zk: recvLoop should never return nil error")
@@ -702,7 +694,7 @@ func (c *Conn) restoreWatches() {
 		for _, req = range reqs {
 			_, _, err := c.request(context.Background(), opSetWatches2, req, nil, nil)
 			if err != nil {
-				c.logger.Printf("failed to set previous watches: %v", err)
+				c.logger.Error("failed to set previous watches", "error", err)
 				break
 			}
 		}
@@ -846,7 +838,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 	for {
 		// package length
 		if _, err := readFullWithDeadline(conn, buf[:4], c.ioTimeout); err != nil {
-			return fmt.Errorf("failed to read from connection: %v", err)
+			return fmt.Errorf("failed to read from connection: %w", err)
 		}
 
 		blen := int(binary.BigEndian.Uint32(buf[:4]))
@@ -882,7 +874,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 		} else if res.Xid == -2 {
 			// Ping response. Ignore.
 		} else if res.Xid < 0 {
-			c.logger.Printf("xid < 0 (%d) but not ping or watcher event", res.Xid)
+			c.logger.Error("xid < 0 but not ping or watcher event", "xid", res.Xid)
 		} else {
 			if res.Zxid > 0 {
 				c.lastZxid = res.Zxid
@@ -896,7 +888,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 			c.requestsLock.Unlock()
 
 			if !ok {
-				c.logger.Printf("response for unknown request with xid %d", res.Xid)
+				c.logger.Error("response for unknown request", "xid", res.Xid)
 			} else {
 				var err error
 				if res.Err != 0 {
@@ -928,7 +920,7 @@ func (c *Conn) addWatcher(path string, kind watcherKind, opts watcherOptions) <-
 	opts.stallCallback = func() {
 		// Report watcher stalls.
 		c.sendEvent(Event{Type: EventWatcherStalled, Path: path, State: c.State()})
-		c.logger.Printf("persistent watcher has stalled! {kind:%s, path:%s}", kind, path)
+		c.logger.Error("persistent watcher has stalled", "kind", kind, "path", path)
 
 		if stallCallback != nil { // Call the supplied callback
 			stallCallback()
@@ -1001,7 +993,7 @@ func (c *Conn) queueRequest(ctx context.Context, opcode int32, req any, res any,
 		select {
 		case c.sendChan <- rq:
 		case <-time.After(c.connectTimeout * 2):
-			c.logger.Printf("gave up trying to send opClose to server")
+			c.logger.Error("gave up trying to send opClose to server")
 			rq.recvChan <- response{-1, ErrConnectionClosed}
 		case <-ctx.Done():
 			rq.recvChan <- response{-1, ctx.Err()}
@@ -1762,7 +1754,7 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 	defer c.credsMu.Unlock()
 
 	if c.logInfo {
-		c.logger.Printf("re-submitting `%d` credentials after reconnect", len(c.creds))
+		c.logger.Info("re-submitting credentials after reconnect", "count", len(c.creds))
 	}
 
 	for _, cred := range c.creds {
@@ -1782,23 +1774,23 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 			nil, /* recvFunc*/
 		)
 		if err != nil {
-			return fmt.Errorf("failed to send auth request: %v", err)
+			return fmt.Errorf("failed to send auth request: %w", err)
 		}
 
 		var res response
 		select {
 		case res = <-resChan:
 		case <-c.closeChan:
-			c.logger.Printf("recv closed, cancel re-submitting credentials")
+			c.logger.Info("recv closed, cancel re-submitting credentials")
 			return nil
 		case <-c.shouldQuit:
-			c.logger.Printf("should quit, cancel re-submitting credentials")
+			c.logger.Info("should quit, cancel re-submitting credentials")
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 		if res.err != nil {
-			return fmt.Errorf("failed connection setAuth request: %v", res.err)
+			return fmt.Errorf("failed connection setAuth request: %w", res.err)
 		}
 	}
 

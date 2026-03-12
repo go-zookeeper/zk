@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -94,7 +95,7 @@ func TestDeadlockInClose(t *testing.T) {
 		shouldQuit:     shouldQuit,
 		connectTimeout: 1 * time.Second,
 		sendChan:       make(chan *request, sendChanSize),
-		logger:         DefaultLogger,
+		logger:         slog.Default(),
 	}
 	c.closeFn = sync.OnceFunc(func() {
 		close(shouldQuit)

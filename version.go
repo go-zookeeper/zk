@@ -1,6 +1,7 @@
 package zk
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 )
@@ -31,7 +32,7 @@ func ParseVersionErr(vs string) (Version, error) {
 	}
 
 	if err != nil {
-		return Version{}, fmt.Errorf("invalid version string: %v", err)
+		return Version{}, fmt.Errorf("invalid version string: %w", err)
 	}
 	return Version{major, minor, patch}, nil
 }
@@ -50,38 +51,16 @@ func (v Version) IsValid() bool {
 	return v.Major != -1
 }
 
-func (v Version) LessThan(other Version) bool {
-	if v.Major < other.Major {
-		return true
+func (v Version) Compare(other Version) int {
+	if c := cmp.Compare(v.Major, other.Major); c != 0 {
+		return c
 	}
-	if v.Major > other.Major {
-		return false
+	if c := cmp.Compare(v.Minor, other.Minor); c != 0 {
+		return c
 	}
-	if v.Minor < other.Minor {
-		return true
-	}
-	if v.Minor > other.Minor {
-		return false
-	}
-	return v.Patch < other.Patch
+	return cmp.Compare(v.Patch, other.Patch)
 }
 
-func (v Version) GreaterThan(other Version) bool {
-	if v.Major > other.Major {
-		return true
-	}
-	if v.Major < other.Major {
-		return false
-	}
-	if v.Minor > other.Minor {
-		return true
-	}
-	if v.Minor < other.Minor {
-		return false
-	}
-	return v.Patch > other.Patch
-}
-
-func (v Version) Equal(other Version) bool {
-	return v.Major == other.Major && v.Minor == other.Minor && v.Patch == other.Patch
-}
+func (v Version) LessThan(other Version) bool    { return v.Compare(other) < 0 }
+func (v Version) GreaterThan(other Version) bool { return v.Compare(other) > 0 }
+func (v Version) Equal(other Version) bool       { return v.Compare(other) == 0 }

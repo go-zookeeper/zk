@@ -44,7 +44,7 @@ func NewIntegrationTestServer(t *testing.T, configPath string, stdout, stderr io
 	}
 	if _, err := os.Stat(zkPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("zk: could not find testing zookeeper bin path at %q: %v ", zkPath, err)
+			return nil, fmt.Errorf("zk: could not find testing zookeeper bin path at %q: %w ", zkPath, err)
 		}
 	}
 	// password is 'test'

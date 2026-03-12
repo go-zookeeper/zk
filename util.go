@@ -7,7 +7,6 @@ import (
 	"io"
 	"math/rand/v2"
 	"net"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -139,8 +138,4 @@ func readFullWithDeadline(conn net.Conn, b []byte, timeout time.Duration) (int, 
 func safeResetTimer(tm *time.Timer, d time.Duration) {
 	tm.Stop()
 	tm.Reset(d)
-}
-
-func slicesEqual[T comparable](a, b []T) bool {
-	return slices.Equal(a, b)
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	mathrand "math/rand/v2"
 	"net"
 	"os"
@@ -486,11 +487,11 @@ func TestMultiRead(t *testing.T) {
 				t.Fatalf("Expected 4 responses got %d", len(res))
 			} else if res[0].Error != nil {
 				t.Fatalf("GetChildren returned error: %+v", res[0].Error)
-			} else if !slicesEqual(res[0].Children, []string{"a"}) {
+			} else if !slices.Equal(res[0].Children, []string{"a"}) {
 				t.Fatalf("GetChildren returned wrong children: %+v", res[0].Children)
 			} else if res[1].Error != nil {
 				t.Fatalf("GetChildren returned error: %+v", res[1].Error)
-			} else if !slicesEqual(res[1].Children, []string{"b", "c"}) {
+			} else if !slices.Equal(res[1].Children, []string{"b", "c"}) {
 				t.Fatalf("GetChildren returned wrong children: %+v", res[1].Children)
 			} else if res[2].Error != nil {
 				t.Fatalf("GetChildren returned error: %+v", res[2].Error)
@@ -500,7 +501,7 @@ func TestMultiRead(t *testing.T) {
 				t.Fatalf("GetData returned error: %+v", res[3].Error)
 			} else if res[3].Stat == nil {
 				t.Fatal("GetData returned nil stat")
-			} else if !slicesEqual(res[3].Data, []byte{1, 2, 3, 4}) {
+			} else if !slices.Equal(res[3].Data, []byte{1, 2, 3, 4}) {
 				t.Fatalf("GetData returned wrong data: %+v", res[3].Data)
 			} else {
 				t.Logf("%+v", res)
@@ -1988,14 +1989,14 @@ func TestMaxBufferSize(t *testing.T) {
 	WithTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "}, func(t *testing.T, tc *TestCluster) {
 		// no buffer size
 		c, _, err := tc.ConnectWithOptions(15 * time.Second)
-		var l testLogger
+		testLog, testH := newTestLogger()
 		if err != nil {
 			t.Fatalf("Connect returned error: %+v", err)
 		}
 		defer c.Close()
 		// 1k buffer size, logs to custom test logger
 		cLimited, _, err := tc.ConnectWithOptions(15*time.Second, WithMaxBufferSize(1024), func(conn *Conn) {
-			conn.SetLogger(&l)
+			conn.SetLogger(testLog)
 		})
 		if err != nil {
 			t.Fatalf("Connect returned error: %+v", err)
@@ -2049,7 +2050,7 @@ func TestMaxBufferSize(t *testing.T) {
 		// right error to the corresponding outstanding request. So the request just sees ErrConnectionClosed
 		// while the log will see the actual reason the connection was closed.
 		expectErr(t, err, ErrConnectionClosed)
-		expectLogMessage(t, &l, "received packet from server with length .*, which exceeds max buffer size 1024")
+		expectLogMessage(t, testH, "received packet from server with length .*, which exceeds max buffer size 1024")
 
 		// Or with large number of children...
 		totalLen := 0
@@ -2066,7 +2067,7 @@ func TestMaxBufferSize(t *testing.T) {
 		slices.Sort(children)
 		_, _, err = cLimited.Children("/bar")
 		expectErr(t, err, ErrConnectionClosed)
-		expectLogMessage(t, &l, "received packet from server with length .*, which exceeds max buffer size 1024")
+		expectLogMessage(t, testH, "received packet from server with length .*, which exceeds max buffer size 1024")
 
 		// Other client (without buffer size limit) can successfully query the node and its children, of course
 		resultData, _, err = c.Get("/bar")
@@ -2203,25 +2204,40 @@ func generateTreePaths(prefix string, depth int, breadth int) []string {
 	return paths
 }
 
-type testLogger struct {
+type testHandler struct {
 	mu     sync.Mutex
 	events []string
 }
 
-func (l *testLogger) Printf(msgFormat string, args ...any) {
-	msg := fmt.Sprintf(msgFormat, args...)
+func (h *testHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (h *testHandler) Handle(_ context.Context, r slog.Record) error {
+	msg := r.Message
+	r.Attrs(func(a slog.Attr) bool {
+		msg += " " + a.Key + "=" + fmt.Sprint(a.Value.Any())
+		return true
+	})
 	fmt.Println(msg)
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.events = append(l.events, msg)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.events = append(h.events, msg)
+	return nil
 }
 
-func (l *testLogger) Reset() []string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	ret := l.events
-	l.events = nil
+func (h *testHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *testHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *testHandler) Reset() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	ret := h.events
+	h.events = nil
 	return ret
+}
+
+func newTestLogger() (*slog.Logger, *testHandler) {
+	h := &testHandler{}
+	return slog.New(h), h
 }
 
 func startSlowProxy(t *testing.T, up, down Rate, upstream string, adj func(ln *Listener)) (string, chan bool, error) {
@@ -2299,7 +2315,7 @@ func expectErr(t *testing.T, err error, expected error) {
 	}
 }
 
-func expectLogMessage(t *testing.T, logger *testLogger, pattern string) {
+func expectLogMessage(t *testing.T, logger *testHandler, pattern string) {
 	re := regexp.MustCompile(pattern)
 	events := logger.Reset()
 	if len(events) == 0 {
