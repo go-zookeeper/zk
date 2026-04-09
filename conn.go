@@ -124,6 +124,9 @@ type request struct {
 	pkt        interface{}
 	recvStruct interface{}
 	recvChan   chan response
+	// completed ensures a request is completed only once.
+	// queue/send/flush/recv paths can race to finish the same request.
+	completed uint32
 
 	// Because sending and receiving happen in separate go routines, there's
 	// a possible race condition when creating watches from outside the read
@@ -138,6 +141,20 @@ type request struct {
 type response struct {
 	zxid int64
 	err  error
+}
+
+// complete sends the terminal response at most once.
+// Extra completion attempts are ignored when concurrent paths race.
+// It returns true if this call sent the response.
+func (req *request) complete(res response) bool {
+	if req == nil {
+		return false
+	}
+	if !atomic.CompareAndSwapUint32(&req.completed, 0, 1) {
+		return false
+	}
+	req.recvChan <- res
+	return true
 }
 
 // Event is an Znode event sent by the server.
@@ -515,7 +532,7 @@ func (c *Conn) flushUnsentRequests(err error) {
 		default:
 			return
 		case req := <-c.sendChan:
-			req.recvChan <- response{-1, err}
+			req.complete(response{-1, err})
 		}
 	}
 }
@@ -524,7 +541,7 @@ func (c *Conn) flushUnsentRequests(err error) {
 func (c *Conn) flushRequests(err error) {
 	c.requestsLock.Lock()
 	for _, req := range c.requests {
-		req.recvChan <- response{-1, err}
+		req.complete(response{-1, err})
 	}
 	c.requests = make(map[int32]*request)
 	c.requestsLock.Unlock()
@@ -722,13 +739,13 @@ func (c *Conn) sendData(req *request) error {
 	header := &requestHeader{req.xid, req.opcode}
 	n, err := encodePacket(c.buf[4:], header)
 	if err != nil {
-		req.recvChan <- response{-1, err}
+		req.complete(response{-1, err})
 		return nil
 	}
 
 	n2, err := encodePacket(c.buf[4+n:], req.pkt)
 	if err != nil {
-		req.recvChan <- response{-1, err}
+		req.complete(response{-1, err})
 		return nil
 	}
 
@@ -739,7 +756,7 @@ func (c *Conn) sendData(req *request) error {
 	c.requestsLock.Lock()
 	select {
 	case <-c.closeChan:
-		req.recvChan <- response{-1, ErrConnectionClosed}
+		req.complete(response{-1, ErrConnectionClosed})
 		c.requestsLock.Unlock()
 		return ErrConnectionClosed
 	default:
@@ -751,7 +768,7 @@ func (c *Conn) sendData(req *request) error {
 	_, err = c.conn.Write(c.buf[:n+4])
 	c.conn.SetWriteDeadline(time.Time{})
 	if err != nil {
-		req.recvChan <- response{-1, err}
+		req.complete(response{-1, err})
 		c.conn.Close()
 		return err
 	}
@@ -867,7 +884,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				if req.recvFunc != nil {
 					req.recvFunc(req, &res, err)
 				}
-				req.recvChan <- response{res.Zxid, err}
+				req.complete(response{res.Zxid, err})
 				if req.opcode == opClose {
 					return io.EOF
 				}
@@ -907,20 +924,20 @@ func (c *Conn) queueRequest(opcode int32, req interface{}, res interface{}, recv
 		case c.sendChan <- rq:
 		case <-time.After(c.connectTimeout * 2):
 			c.logger.Printf("gave up trying to send opClose to server")
-			rq.recvChan <- response{-1, ErrConnectionClosed}
+			rq.complete(response{-1, ErrConnectionClosed})
 		}
 	default:
 		// otherwise avoid deadlocks for dumb clients who aren't aware that
 		// the ZK connection is closed yet.
 		select {
 		case <-c.shouldQuit:
-			rq.recvChan <- response{-1, ErrConnectionClosed}
+			rq.complete(response{-1, ErrConnectionClosed})
 		case c.sendChan <- rq:
 			// check for a tie
 			select {
 			case <-c.shouldQuit:
 				// maybe the caller gets this, maybe not- we tried.
-				rq.recvChan <- response{-1, ErrConnectionClosed}
+				rq.complete(response{-1, ErrConnectionClosed})
 			default:
 			}
 		}
