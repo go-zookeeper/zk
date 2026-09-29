@@ -47,3 +47,13 @@ func parseCreateMode(flag int32) (createMode, error) {
 		return createMode{}, fmt.Errorf("invalid flag value: [%v]", flag)
 	}
 }
+
+// createOpCode selects the ZooKeeper create opcode for the generic Create API.
+// Container nodes must use opCreateContainer; using opCreate with create-mode
+// CONTAINER causes the server to ignore the container bit (see #165).
+func createOpCode(mode createMode) int32 {
+	if mode.isContainer {
+		return opCreateContainer
+	}
+	return opCreate
+}

@@ -41,3 +41,28 @@ func TestParseCreateMode(t *testing.T) {
 	})
 
 }
+
+func TestCreateOpCode(t *testing.T) {
+	tests := []struct {
+		name string
+		flag int32
+		want int32
+	}{
+		{"persistent", FlagPersistent, opCreate},
+		{"ephemeral", FlagEphemeral, opCreate},
+		{"sequential", FlagSequence, opCreate},
+		{"ephemeral sequential", FlagEphemeralSequential, opCreate},
+		{"container", FlagContainer, opCreateContainer},
+		{"ttl still maps to opCreate (Create rejects TTL)", FlagTTL, opCreate},
+		{"persistent sequential with ttl", FlagPersistentSequentialWithTTL, opCreate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cm, err := parseCreateMode(tt.flag)
+			requireNoErrorf(t, err)
+			if got := createOpCode(cm); got != tt.want {
+				t.Fatalf("createOpCode(%v)=%v; want %v", tt.flag, got, tt.want)
+			}
+		})
+	}
+}
