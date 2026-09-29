@@ -1069,7 +1069,7 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 	}
 
 	res := &createResponse{}
-	_, err = c.request(opCreate, &CreateRequest{path, data, acl, createMode.flag}, res, nil)
+	_, err = c.request(createOpCode(createMode), &CreateRequest{path, data, acl, createMode.flag}, res, nil)
 	if err == ErrConnectionClosed {
 		return "", err
 	}
