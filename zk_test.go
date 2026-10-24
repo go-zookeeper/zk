@@ -549,7 +549,7 @@ func TestIntegration_IfAuthdataSurvivesReconnect(t *testing.T) {
 		} else {
 			msg = fmt.Sprintf("Expecting ErrNoAuth, got `%+v` instead", err)
 		}
-		t.Fatalf(msg)
+		t.Fatal(msg)
 	}
 
 	zk.AddAuth("digest", []byte("userfoo:passbar"))
