@@ -427,7 +427,9 @@ func (c *Conn) loop(ctx context.Context) {
 	for {
 		if err := c.connect(); err != nil {
 			// c.Close() was called
-			return
+			c.logger.Printf("connect failed: %s", err)
+			time.Sleep(time.Second)
+			continue
 		}
 
 		err := c.authenticate()
