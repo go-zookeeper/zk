@@ -115,6 +115,8 @@ type Conn struct {
 	buf []byte
 }
 
+type ConnOption = connOption
+
 // connOption represents a connection option.
 type connOption func(c *Conn)
 
