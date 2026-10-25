@@ -1228,6 +1228,55 @@ func TestIntegration_MaxBufferSize(t *testing.T) {
 	}
 }
 
+func TestRemoveWatch(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Stop()
+	zk, _, err := ts.ConnectAll()
+	if err != nil {
+		t.Fatalf("Connect returned error: %+v", err)
+	}
+	defer zk.Close()
+
+	path := "/remove-watch-test"
+
+	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
+		t.Fatalf("Delete returned error: %+v", err)
+	}
+	if p, err := zk.Create(path, []byte{1, 2, 3, 4}, 0, WorldACL(PermAll)); err != nil {
+		t.Fatalf("Create returned error: %+v", err)
+	} else if p != path {
+		t.Fatalf("Create returned different path '%s' != '%s'", p, path)
+	}
+
+	ex, stat, ch, err := zk.ExistsW(path)
+	if err != nil {
+		t.Fatalf("ExistW returned error: %+v", err)
+	} else if !ex {
+		t.Fatal("ExistW returned not exist")
+	} else if stat == nil {
+		t.Fatal("ExistW returned nil stat")
+	}
+
+	go func() {
+		data := <-ch
+		if data.Type != EventNotWatching {
+			t.Error("Unexpected watch state", data)
+			return
+		}
+		t.Log("Watch channel data", data)
+	}()
+
+	if err := zk.RemoveWatch(path); err != nil {
+		t.Fatalf("RemoveWatch returned error: %+v", err)
+	}
+	if err := zk.Delete(path, -1); err != nil && err != ErrNoNode {
+		t.Fatalf("Delete returned error: %+v", err)
+	}
+}
+
 func startSlowProxy(t *testing.T, up, down Rate, upstream string, adj func(ln *Listener)) (string, chan bool, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

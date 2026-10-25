@@ -1251,6 +1251,32 @@ func (c *Conn) SetACL(path string, acl []ACL, version int32) (*Stat, error) {
 	return &res.Stat, err
 }
 
+// RemoveWatch remove all watches on znode
+func (c *Conn) RemoveWatch(path string) error {
+	_, err := c.request(opRemoveWatches, &removeWatchRequest{Path: path, WatcherType: watcherTypeAny}, &removeWatchResponse{}, nil)
+	if err != nil {
+		return err
+	}
+
+	wTypes := []watchType{watchTypeExist, watchTypeData, watchTypeChild}
+
+	c.watchersLock.Lock()
+	defer c.watchersLock.Unlock()
+	for _, t := range wTypes {
+		wpt := watchPathType{path, t}
+		ev := Event{Type: EventNotWatching, State: StateDisconnected, Path: path, Err: err}
+
+		if watchers := c.watchers[wpt]; len(watchers) > 0 {
+			for _, ch := range watchers {
+				ch <- ev
+				close(ch)
+			}
+			delete(c.watchers, wpt)
+		}
+	}
+	return nil
+}
+
 // Sync flushes the channel between process and the leader of a given znode,
 // you may need it if you want identical views of ZooKeeper data for 2 client instances.
 // Please refer to the "Consistency Guarantees" section of ZK document for more details.
