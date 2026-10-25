@@ -196,3 +196,39 @@ func TestNotifyWatches(t *testing.T) {
 		})
 	}
 }
+
+func TestTemoveGetWatches(t *testing.T) {
+	ch := make(chan Event, 1)
+	zkPath := "/a"
+	conn := &Conn{watchers: make(map[watchPathType][]chan Event)}
+	watcherInfo := watchPathType{zkPath, watchTypeData}
+	conn.watchers[watcherInfo] = append(conn.watchers[watcherInfo], ch)
+
+	// Assert that the map has the required number of watchers
+	if len(conn.watchers[watcherInfo]) != 1 {
+		t.Fatalf("Failed to add a data watcher for path %s", zkPath)
+	}
+	conn.RemoveGetW(zkPath, ch)
+
+	// Assert that the channel is closed and removed from the map
+	var closed bool
+	select {
+	case _, ok := <-ch:
+		closed = !ok
+	default:
+		closed = false
+	}
+
+	if !closed {
+		t.Fatalf("Channel used for notifying data watch changes was not closed on removal")
+	}
+
+	if len(conn.watchers[watcherInfo]) != 0 {
+		t.Fatalf("Failed to remove channel used to notify data watch changes")
+	}
+
+	// Try to remove the same channel and expect failure.
+	if removed := conn.RemoveGetW(zkPath, ch); removed {
+		t.Fatalf("Removed the same channel twice")
+	}
+}
