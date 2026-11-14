@@ -243,6 +243,16 @@ func WithHostProvider(hostProvider HostProvider) connOption {
 	}
 }
 
+// WithInitialPasswd returns a connection option specifying the passwd sent in
+// the initial ConnectRequest handshake. ClickHouse Keeper authenticates
+// clients with the plaintext password carried in this field, so it must be set
+// before the first connect.
+func WithInitialPasswd(passwd []byte) connOption {
+	return func(c *Conn) {
+		c.passwd = passwd
+	}
+}
+
 // WithLogger returns a connection option specifying a non-default Logger.
 func WithLogger(logger Logger) connOption {
 	return func(c *Conn) {
