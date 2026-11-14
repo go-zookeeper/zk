@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -49,10 +50,24 @@ func (l *Lock) Lock() error {
 	return l.LockWithData([]byte{})
 }
 
+// TryLock attempts to acquire the lock before a timeout. It works like LockWithData, but it doesn't
+// write any data to the lock node.
+func (l *Lock) TryLock(timeout time.Duration) error {
+	return l.TryLockWithData([]byte{}, timeout)
+}
+
 // LockWithData attempts to acquire the lock, writing data into the lock node.
 // It will wait to return until the lock is acquired or an error occurs. If
 // this instance already has the lock then ErrDeadlock is returned.
 func (l *Lock) LockWithData(data []byte) error {
+	return l.TryLockWithData(data, time.Duration(-1))
+}
+
+// TryLockWithData attempts to acquire the lock, writing data into the lock node.
+// It will wait to return until the lock is acquired, an error occurs, or the timeout. If
+// this instance already has the lock then ErrDeadlock is returned.  A negative
+// timeout is waiting forever
+func (l *Lock) TryLockWithData(data []byte, timeout time.Duration) error {
 	if l.lockPath != "" {
 		return ErrDeadlock
 	}
@@ -97,6 +112,8 @@ func (l *Lock) LockWithData(data []byte) error {
 		return err
 	}
 
+	start := time.Now()
+
 	for {
 		children, _, err := l.c.Children(l.path)
 		if err != nil {
@@ -134,9 +151,30 @@ func (l *Lock) LockWithData(data []byte) error {
 			continue
 		}
 
-		ev := <-ch
-		if ev.Err != nil {
-			return ev.Err
+		if timeout >= 0 {
+			wait := start.Add(timeout).Sub(time.Now())
+			if wait < 0 {
+				wait = time.Duration(1)
+			}
+			delay := time.NewTimer(wait)
+			select {
+			case ev := <-ch:
+				if ev.Err != nil {
+					return ev.Err
+				}
+			case <-delay.C:
+				// remove the pending lock path on timeout
+				delErr := l.c.Delete(path, -1)
+				if delErr != nil {
+					return delErr
+				}
+				return ErrTimeout
+			}
+		} else {
+			ev := <-ch
+			if ev.Err != nil {
+				return ev.Err
+			}
 		}
 	}
 

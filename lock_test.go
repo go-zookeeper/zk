@@ -1,6 +1,7 @@
 package zk
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -36,6 +37,59 @@ func TestIntegration_Lock(t *testing.T) {
 	l2 := NewLock(zk, "/test", acls)
 	go func() {
 		if err := l2.Lock(); err != nil {
+			t.Fatal(err)
+		}
+		val <- 2
+		if err := l2.Unlock(); err != nil {
+			t.Fatal(err)
+		}
+		val <- 3
+	}()
+	time.Sleep(time.Millisecond * 100)
+
+	val <- 1
+	if err := l.Unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if x := <-val; x != 1 {
+		t.Fatalf("Expected 1 instead of %d", x)
+	}
+	if x := <-val; x != 2 {
+		t.Fatalf("Expected 2 instead of %d", x)
+	}
+	if x := <-val; x != 3 {
+		t.Fatalf("Expected 3 instead of %d", x)
+	}
+}
+
+func TestIntegration_TryLock(t *testing.T) {
+	ts, err := StartTestCluster(t, 1, nil, logWriter{t: t, p: "[ZKERR] "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Stop()
+	zk, _, err := ts.ConnectAll()
+	if err != nil {
+		t.Fatalf("Connect returned error: %+v", err)
+	}
+	defer zk.Close()
+
+	acls := WorldACL(PermAll)
+
+	l := NewLock(zk, "/test", acls)
+	if err := l.TryLock(time.Second); err != nil {
+		t.Fatal(err)
+	}
+
+	l2 := NewLock(zk, "/test", acls)
+	if err := l2.TryLock(time.Millisecond * 100); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("Expected ErrTimeout instead of %s", err)
+	}
+
+	val := make(chan int, 3)
+
+	go func() {
+		if err := l2.TryLock(time.Second); err != nil {
 			t.Fatal(err)
 		}
 		val <- 2
