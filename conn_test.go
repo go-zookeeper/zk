@@ -2,8 +2,10 @@ package zk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -194,5 +196,71 @@ func TestNotifyWatches(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestConnLoop(t *testing.T) {
+
+	hostProvider := &DNSHostProvider{}
+
+	seq := 1
+	executedCount := 0
+	ipNum := 3
+
+	// simulate dns resolution to different ip addresses
+	hostProvider.lookupHost = func(string) ([]string, error) {
+		fmt.Println("Executed lookupHost,", executedCount)
+
+		executedCount++
+
+		if executedCount > 3 {
+			return nil, errors.New("lookupHost error")
+		}
+
+		ips := []string{}
+
+		for i := 0; i < ipNum; i++ {
+			seq = seq + 1
+			ips = append(ips, fmt.Sprintf("127.0.0.%v", seq))
+		}
+
+		return ips, nil
+	}
+
+	srvs := []string{"zk-test:2181"}
+
+	conn := &Conn{
+		dialer:         net.DialTimeout,
+		hostProvider:   hostProvider,
+		conn:           nil,
+		state:          StateDisconnected,
+		shouldQuit:     make(chan struct{}),
+		connectTimeout: 1 * time.Second,
+		sendChan:       make(chan *request, sendChanSize),
+		requests:       make(map[int32]*request),
+		watchers:       make(map[watchPathType][]chan Event),
+		passwd:         emptyPassword,
+		logger:         DefaultLogger,
+		logInfo:        true, // default is true for backwards compatability
+		buf:            make([]byte, bufferSize),
+		resendZkAuthFn: resendZkAuth,
+		configAddress:  srvs,
+	}
+
+	if err := conn.hostProvider.Init(srvs); err != nil {
+		t.Fatal(err)
+	}
+
+	for {
+		if err := conn.connect(); err != nil {
+			// c.Close() was called
+			return
+		}
+		conn.hostProvider.Connected()
+
+		// mock conn disconnect
+		<-time.After(time.Second * 3)
+
+		fmt.Println("conn disconnect")
 	}
 }
